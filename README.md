@@ -59,6 +59,7 @@ InErgize follows a microservices architecture pattern with the following core se
 ### Technology Stack
 
 **Backend Services**
+
 - **Runtime**: Node.js 18+ with TypeScript
 - **Frameworks**: Express.js, NestJS
 - **Databases**: PostgreSQL 14+, TimescaleDB, Redis 6+
@@ -66,12 +67,14 @@ InErgize follows a microservices architecture pattern with the following core se
 - **API Gateway**: Kong with rate limiting
 
 **Frontend Applications**
+
 - **Web App**: Next.js 14+ with TypeScript
 - **Mobile**: React Native with Expo
 - **State Management**: Zustand/Redux Toolkit
 - **UI Framework**: Tailwind CSS with Headless UI
 
 **AI & External Services**
+
 - **Content Generation**: OpenAI GPT-4, Anthropic Claude
 - **Image Generation**: DALL-E 3, Stability AI
 - **LinkedIn Integration**: Official LinkedIn REST API
@@ -79,6 +82,7 @@ InErgize follows a microservices architecture pattern with the following core se
 - **File Storage**: AWS S3 with CloudFront CDN
 
 **Infrastructure & Monitoring**
+
 - **Containerization**: Docker with Kubernetes
 - **Cloud Provider**: AWS/Azure with multi-region deployment
 - **Monitoring**: DataDog, Grafana, Prometheus
@@ -132,53 +136,59 @@ InErgize/
 ### Quick Start (Development)
 
 1. **Clone the repository**
+
    ```bash
    git clone https://github.com/yourusername/InErgize.git
    cd InErgize
    ```
 
 2. **Environment Setup**
+
    ```bash
    # Copy environment templates
    cp .env.example .env.local
    cp services/auth-service/.env.example services/auth-service/.env
-   
+
    # Configure your environment variables
    # See Environment Configuration section below
    ```
 
 3. **Install Dependencies**
+
    ```bash
    # Root dependencies
    npm install
-   
+
    # Install all service dependencies
    npm run install:all
    ```
 
 4. **Start Infrastructure**
+
    ```bash
    # Start PostgreSQL, Redis, and other dependencies
    docker-compose up -d postgres redis elasticsearch
-   
+
    # Wait for services to be ready
    npm run wait-for-services
    ```
 
 5. **Database Setup**
+
    ```bash
    # Run migrations
    npm run db:migrate
-   
+
    # Seed development data
    npm run db:seed
    ```
 
 6. **Start Development Environment**
+
    ```bash
    # Start all services in development mode
    npm run dev
-   
+
    # Or start services individually
    npm run dev:auth        # Auth service on :3001
    npm run dev:user        # User service on :3002
@@ -188,10 +198,11 @@ InErgize/
    ```
 
 7. **Verify Installation**
+
    ```bash
    # Run health checks
    npm run health-check
-   
+
    # Run basic integration tests
    npm run test:integration:basic
    ```
@@ -287,8 +298,9 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 ## 📊 Development Status
 
 ### Current Phase: Foundation & Architecture (Phase 1)
+
 - [x] System architecture design complete
-- [x] Database schema design complete  
+- [x] Database schema design complete
 - [x] Component architecture design complete
 - [x] Technical specifications complete
 - [x] Development roadmap established
@@ -299,35 +311,41 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 ### Upcoming Milestones
 
 **Phase 1 Completion (Month 2)**
+
 - Core authentication system
 - Basic LinkedIn integration
 - MVP dashboard
 - Profile analysis foundation
 
 **Phase 2 Targets (Month 4)**
+
 - Advanced analytics pipeline
 - AI content generation
 - Real-time dashboard
 - Enhanced user experience
 
-See [development-roadmap.md](development-roadmap.md) for complete timeline and milestones.
+See [docs/development-roadmap.md](docs/development-roadmap.md) for complete timeline and milestones.
 
 ## 📖 Documentation
 
 ### Architecture Documentation
-- [System Architecture](system-architecture.md) - High-level system design and infrastructure
-- [Component Diagrams](component-diagrams.md) - Detailed service components and interactions
-- [Database Design](database-design.md) - Database schema, relationships, and optimization
-- [Technical Specifications](technical-specifications.md) - API specifications and requirements
+
+- [System Architecture](docs/system-architecture.md) - High-level system design and infrastructure
+- [Component Diagrams](docs/component-diagrams.md) - Detailed service components and interactions
+- [Database Design](docs/database-design.md) - Database schema, relationships, and optimization
+- [Technical Specifications](docs/technical-specifications.md) - API specifications and requirements
 
 ### Development Guides
+
 - [CLAUDE.md](CLAUDE.md) - Claude Code development guidance and conventions
-- [Development Roadmap](development-roadmap.md) - 12-month development plan and phases
+- [Development Roadmap](docs/development-roadmap.md) - 12-month development plan and phases
 - [API Documentation](docs/api/) - Detailed API endpoint documentation
 - [Deployment Guide](docs/deployment/) - Production deployment instructions
 
 ### Service Documentation
+
 Each microservice has detailed documentation in its respective directory:
+
 - [Auth Service](services/auth-service/README.md)
 - [User Management](services/user-service/README.md)
 - [LinkedIn Integration](services/linkedin-service/README.md)
@@ -383,6 +401,7 @@ npm run test:all
 ### Production Deployment
 
 #### Prerequisites
+
 - Kubernetes cluster (v1.25+)
 - Domain with SSL certificate
 - Production databases (PostgreSQL, Redis)
@@ -407,7 +426,7 @@ npm run health-check:production
 # Development Environment
 npm run deploy:dev
 
-# Staging Environment  
+# Staging Environment
 npm run deploy:staging
 
 # Production Environment
@@ -442,6 +461,7 @@ curl https://api.inergize.com/ai/health
 ## 🔒 Security & Compliance
 
 ### Security Features
+
 - **Authentication**: JWT with refresh tokens, MFA support
 - **Authorization**: Role-based access control (RBAC)
 - **Data Protection**: AES-256 encryption at rest, TLS 1.3 in transit
@@ -449,14 +469,16 @@ curl https://api.inergize.com/ai/health
 - **Input Validation**: Comprehensive request validation and sanitization
 
 ### Compliance Standards
+
 - **GDPR Compliance**: Data minimization, consent management, right to erasure
 - **CCPA Compliance**: Data transparency, opt-out mechanisms
 - **SOC 2 Type II**: Security, availability, processing integrity
 - **LinkedIn TOS**: Strict compliance with LinkedIn Developer Agreement
 
 ### LinkedIn Compliance Features
+
 - **Conservative Rate Limiting**: 50% of LinkedIn's published limits
-- **Human Behavior Simulation**: Natural delays, varied interaction patterns  
+- **Human Behavior Simulation**: Natural delays, varied interaction patterns
 - **Account Health Monitoring**: Real-time compliance tracking
 - **Automatic Safety Stops**: Immediate automation pause on violations
 - **User Education**: Clear guidance on LinkedIn policy compliance
@@ -466,6 +488,7 @@ curl https://api.inergize.com/ai/health
 ### Development Guidelines
 
 1. **Fork and Clone**
+
    ```bash
    git clone https://github.com/yourusername/InErgize.git
    cd InErgize
@@ -473,13 +496,14 @@ curl https://api.inergize.com/ai/health
    ```
 
 2. **Development Workflow**
+
    ```bash
    # Install dependencies
    npm run install:all
-   
+
    # Start development environment
    npm run dev
-   
+
    # Make your changes and test
    npm run test
    npm run lint
@@ -487,6 +511,7 @@ curl https://api.inergize.com/ai/health
    ```
 
 3. **Commit Standards**
+
    ```bash
    # Use conventional commits
    git commit -m "feat(auth): add multi-factor authentication"
@@ -495,6 +520,7 @@ curl https://api.inergize.com/ai/health
    ```
 
 4. **Testing Requirements**
+
    - Unit tests for all new functionality (90%+ coverage)
    - Integration tests for API endpoints
    - E2E tests for critical user flows
@@ -529,8 +555,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ### Development Support
 
 - **Claude Code Integration**: See [CLAUDE.md](CLAUDE.md) for development guidance
-- **Architecture Questions**: Refer to [system-architecture.md](system-architecture.md)
-- **API Documentation**: Check [technical-specifications.md](technical-specifications.md)
+- **Architecture Questions**: Refer to [docs/system-architecture.md](docs/system-architecture.md)
+- **API Documentation**: Check [docs/technical-specifications.md](docs/technical-specifications.md)
 
 ### Contact Information
 
