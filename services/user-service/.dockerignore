@@ -1,0 +1,37 @@
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Local env files
+.env*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+tests
+coverage
+*.test.ts
+*.spec.ts
+
+# Built files (only exclude in production build)
+dist
+
+# Development config files (keep src and tsconfig.json for build)
+.eslintrc.json
+.prettierrc
+README.md
