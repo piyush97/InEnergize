@@ -1,0 +1,42 @@
+{
+  "name": "@inergize/user-service",
+  "version": "1.0.0",
+  "description": "User management service for InErgize platform",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.7.0",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "ioredis": "^5.3.2",
+    "winston": "^3.11.0",
+    "uuid": "^9.0.1",
+    "dotenv": "^16.3.1",
+    "prom-client": "^15.0.0",
+    "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/uuid": "^9.0.7",
+    "@types/node": "^20.10.0",
+    "@types/multer": "^1.4.11",
+    "tsx": "^4.6.0",
+    "typescript": "^5.3.2"
+  },
+  "keywords": ["user", "profile", "management", "microservice"],
+  "author": "InErgize Team",
+  "license": "UNLICENSED"
+}
