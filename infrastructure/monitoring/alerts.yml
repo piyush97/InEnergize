@@ -1,0 +1,256 @@
+# Prometheus Alert Rules for InErgize Platform
+groups:
+  # Infrastructure Alerts
+  - name: infrastructure
+    interval: 30s
+    rules:
+      # High CPU Usage
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 2m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage on {{ $labels.instance }} is {{ $value }}%"
+
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 2m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage on {{ $labels.instance }} is {{ $value }}%"
+
+      # Disk Space Low
+      - alert: DiskSpaceLow
+        expr: (1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)) * 100 > 90
+        for: 1m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Low disk space"
+          description: "Disk space on {{ $labels.instance }} {{ $labels.mountpoint }} is {{ $value }}% full"
+
+      # Instance Down
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Instance is down"
+          description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute"
+
+  # Database Alerts
+  - name: database
+    interval: 30s
+    rules:
+      # PostgreSQL Down
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL instance {{ $labels.instance }} is down"
+
+      # High Database Connections
+      - alert: HighDatabaseConnections
+        expr: (pg_stat_activity_count / pg_settings_max_connections) * 100 > 80
+        for: 2m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "High database connection usage"
+          description: "Database connections on {{ $labels.instance }} are {{ $value }}% of max connections"
+
+      # Redis Down
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Redis is down"
+          description: "Redis instance {{ $labels.instance }} is down"
+
+      # High Redis Memory Usage
+      - alert: HighRedisMemoryUsage
+        expr: (redis_memory_used_bytes / redis_memory_max_bytes) * 100 > 90
+        for: 2m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "High Redis memory usage"
+          description: "Redis memory usage on {{ $labels.instance }} is {{ $value }}%"
+
+  # Application Alerts
+  - name: application
+    interval: 30s
+    rules:
+      # High HTTP Error Rate
+      - alert: HighHTTPErrorRate
+        expr: (rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])) * 100 > 5
+        for: 2m
+        labels:
+          severity: warning
+          component: application
+        annotations:
+          summary: "High HTTP error rate"
+          description: "HTTP 5xx error rate on {{ $labels.job }} is {{ $value }}%"
+
+      # High Response Time
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 2m
+        labels:
+          severity: warning
+          component: application
+        annotations:
+          summary: "High response time"
+          description: "95th percentile response time on {{ $labels.job }} is {{ $value }} seconds"
+
+      # Service Unavailable
+      - alert: ServiceUnavailable
+        expr: up{job=~".*-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: application
+        annotations:
+          summary: "Service is unavailable"
+          description: "Service {{ $labels.job }} is unavailable"
+
+      # High Memory Usage (Application)
+      - alert: HighApplicationMemoryUsage
+        expr: process_resident_memory_bytes > 1073741824  # 1GB
+        for: 2m
+        labels:
+          severity: warning
+          component: application
+        annotations:
+          summary: "High application memory usage"
+          description: "Application {{ $labels.job }} is using {{ $value | humanizeBytes }} of memory"
+
+  # Business Logic Alerts
+  - name: business
+    interval: 60s
+    rules:
+      # LinkedIn API Rate Limit
+      - alert: LinkedInAPIRateLimit
+        expr: linkedin_api_rate_limit_remaining < 10
+        for: 1m
+        labels:
+          severity: warning
+          component: business
+        annotations:
+          summary: "LinkedIn API rate limit approaching"
+          description: "LinkedIn API rate limit remaining: {{ $value }}"
+
+      # High LinkedIn API Error Rate
+      - alert: HighLinkedInAPIErrorRate
+        expr: (rate(linkedin_api_requests_total{status=~"4..|5.."}[10m]) / rate(linkedin_api_requests_total[10m])) * 100 > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: business
+        annotations:
+          summary: "High LinkedIn API error rate"
+          description: "LinkedIn API error rate is {{ $value }}%"
+
+      # AI Service Quota Warning
+      - alert: AIServiceQuotaWarning
+        expr: ai_service_quota_usage_percent > 80
+        for: 1m
+        labels:
+          severity: warning
+          component: business
+        annotations:
+          summary: "AI service quota approaching limit"
+          description: "AI service quota usage is {{ $value }}%"
+
+      # Failed Content Publishing
+      - alert: HighContentPublishFailureRate
+        expr: (rate(content_publish_total{status="failed"}[10m]) / rate(content_publish_total[10m])) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: business
+        annotations:
+          summary: "High content publishing failure rate"
+          description: "Content publishing failure rate is {{ $value }}%"
+
+      # Automation Rules Failing
+      - alert: AutomationRulesFailure
+        expr: rate(automation_rules_executions_total{status="failed"}[10m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+          component: business
+        annotations:
+          summary: "High automation rules failure rate"
+          description: "Automation rules are failing at {{ $value }} failures per second"
+
+  # Security Alerts
+  - name: security
+    interval: 30s
+    rules:
+      # Too Many Failed Login Attempts
+      - alert: HighFailedLoginAttempts
+        expr: rate(auth_login_attempts_total{status="failed"}[5m]) > 10
+        for: 1m
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "High number of failed login attempts"
+          description: "{{ $value }} failed login attempts per second"
+
+      # JWT Token Validation Failures
+      - alert: HighJWTValidationFailures
+        expr: rate(jwt_validation_total{status="invalid"}[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "High JWT validation failure rate"
+          description: "JWT validation failures: {{ $value }} per second"
+
+  # Kong API Gateway Alerts
+  - name: kong
+    interval: 30s
+    rules:
+      # Kong High Response Time
+      - alert: KongHighResponseTime
+        expr: histogram_quantile(0.95, rate(kong_request_latency_ms_bucket[5m])) > 1000
+        for: 2m
+        labels:
+          severity: warning
+          component: kong
+        annotations:
+          summary: "Kong API Gateway high response time"
+          description: "Kong 95th percentile response time is {{ $value }}ms"
+
+      # Kong High Error Rate
+      - alert: KongHighErrorRate
+        expr: (rate(kong_http_status{code=~"5.."}[5m]) / rate(kong_http_status[5m])) * 100 > 5
+        for: 2m
+        labels:
+          severity: warning
+          component: kong
+        annotations:
+          summary: "Kong API Gateway high error rate"
+          description: "Kong 5xx error rate is {{ $value }}%"
