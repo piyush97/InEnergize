@@ -401,53 +401,17 @@ plugins:
       path: /tmp/access.log
       reopen: true
 
-  # Response transformation for consistent API responses
+  # Response transformation for consistent API responses and security headers
   - name: response-transformer
     config:
       add:
         headers:
           - "X-API-Version:v1"
           - "X-Powered-By:InErgize"
-
-  # Security headers
-  - name: response-transformer
-    config:
-      add:
-        headers:
           - "X-Content-Type-Options:nosniff"
           - "X-Frame-Options:DENY"
           - "X-XSS-Protection:1; mode=block"
 
-# Consumer groups for rate limiting
-consumer_groups:
-  - name: free-tier
-    plugins:
-      - name: rate-limiting
-        config:
-          minute: 60
-          hour: 1000
-          day: 10000
-
-  - name: basic-tier
-    plugins:
-      - name: rate-limiting
-        config:
-          minute: 120
-          hour: 2000
-          day: 20000
-
-  - name: professional-tier
-    plugins:
-      - name: rate-limiting
-        config:
-          minute: 300
-          hour: 5000
-          day: 50000
-
-  - name: enterprise-tier
-    plugins:
-      - name: rate-limiting
-        config:
-          minute: 1000
-          hour: 15000
-          day: 150000
+# Consumer groups are not available in this Kong version
+# Will be implemented when upgrading to Kong 3.4+
+# For now, rate limiting is handled by global plugins
