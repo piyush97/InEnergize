@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["shared/*"]
+    }
+  },
+  "include": [
+    "shared/**/*",
+    "database/seeds/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "services",
+    "web",
+    "tests"
+  ],
+  "references": [
+    { "path": "./services/auth-service" },
+    { "path": "./services/user-service" }
+  ]
+}
