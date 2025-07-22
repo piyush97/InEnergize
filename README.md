@@ -147,8 +147,7 @@ InErgize/
    ```bash
    # Copy environment templates
    cp .env.example .env.local
-   cp services/auth-service/.env.example services/auth-service/.env
-
+   
    # Configure your environment variables
    # See Environment Configuration section below
    ```
@@ -156,87 +155,81 @@ InErgize/
 3. **Install Dependencies**
 
    ```bash
-   # Root dependencies
+   # Root dependencies (when available)
    npm install
-
-   # Install all service dependencies
-   npm run install:all
    ```
 
-4. **Start Infrastructure**
+4. **Start Development Environment**
 
    ```bash
-   # Start PostgreSQL, Redis, and other dependencies
-   docker-compose up -d postgres redis elasticsearch
+   # Start complete development environment with Docker
+   docker-compose up -d
 
-   # Wait for services to be ready
-   npm run wait-for-services
+   # Check service health
+   docker-compose ps
+   
+   # View logs
+   docker-compose logs -f
    ```
 
-5. **Database Setup**
+5. **Access Services**
+
+   Once all containers are running, you can access:
+
+   - **Web Application**: http://localhost:3000
+   - **Auth Service**: http://localhost:3001/health
+   - **User Service**: http://localhost:3002/health
+   - **API Gateway (Kong)**: http://localhost:8000
+   - **Kong Admin**: http://localhost:8001
+   - **Kibana (Logs)**: http://localhost:5601
+   - **Elasticsearch**: http://localhost:9200
+
+6. **Stop Development Environment**
 
    ```bash
-   # Run migrations
-   npm run db:migrate
+   # Stop all services
+   docker-compose down
 
-   # Seed development data
-   npm run db:seed
-   ```
-
-6. **Start Development Environment**
-
-   ```bash
-   # Start all services in development mode
-   npm run dev
-
-   # Or start services individually
-   npm run dev:auth        # Auth service on :3001
-   npm run dev:user        # User service on :3002
-   npm run dev:linkedin    # LinkedIn service on :3003
-   npm run dev:ai          # AI service on :3004
-   npm run dev:web         # Web app on :3000
-   ```
-
-7. **Verify Installation**
-
-   ```bash
-   # Run health checks
-   npm run health-check
-
-   # Run basic integration tests
-   npm run test:integration:basic
+   # Stop and remove volumes (WARNING: This deletes all data)
+   docker-compose down -v
    ```
 
 ### Development Workflow
 
+#### Docker-Based Development (Current)
+
 ```bash
-# Development Commands
+# Infrastructure Management
+docker-compose up -d                    # Start all services
+docker-compose down                     # Stop all services
+docker-compose restart [service]       # Restart specific service
+docker-compose logs -f [service]       # View service logs
+docker-compose ps                       # Check service status
+
+# Individual Service Management
+docker-compose up -d postgres redis    # Start only database services
+docker-compose up -d web-app           # Start only web application
+docker-compose exec postgres psql -U inergize_user -d inergize_dev  # Connect to database
+
+# Development Tools
+docker-compose exec web-app npm run build     # Build web application
+docker-compose exec auth-service npm test     # Run tests in auth service
+```
+
+#### Future NPM Commands (Post-Implementation)
+
+```bash
+# Development Commands (to be implemented)
 npm run dev                    # Start all services in development
 npm run build                  # Build all services for production
 npm run test                   # Run complete test suite
-npm run test:watch             # Watch mode for tests
 npm run lint                   # Run ESLint across all services
 npm run type-check             # TypeScript type checking
-npm run format                 # Format code with Prettier
 
-# Database Commands
+# Database Commands (to be implemented)
 npm run db:migrate             # Run database migrations
 npm run db:seed                # Seed database with sample data
 npm run db:reset               # Reset database (development only)
-npm run db:generate-migration  # Generate new migration
-
-# Service Management
-npm run services:start         # Start all services
-npm run services:stop          # Stop all services
-npm run services:restart       # Restart all services
-npm run services:logs          # View aggregated logs
-
-# Testing Commands
-npm run test:unit              # Unit tests only
-npm run test:integration       # Integration tests
-npm run test:e2e               # End-to-end tests
-npm run test:load              # Load testing
-npm run test:security          # Security testing
 ```
 
 ## ⚙️ Environment Configuration
@@ -304,8 +297,15 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 - [x] Component architecture design complete
 - [x] Technical specifications complete
 - [x] Development roadmap established
-- [ ] Infrastructure setup (In Progress)
-- [ ] Core services implementation (Next)
+- [x] Infrastructure setup complete
+- [x] Docker containerization and orchestration
+- [x] Development environment configuration
+- [x] CI/CD pipeline implementation
+- [x] Database setup and migrations framework
+- [x] Environment configuration templates
+- [x] Monitoring and logging infrastructure
+- [x] Security and health check endpoints
+- [ ] Core services implementation (In Progress)
 - [ ] Frontend foundation (Next)
 
 ### Upcoming Milestones
@@ -354,51 +354,81 @@ Each microservice has detailed documentation in its respective directory:
 
 ## 🧪 Testing
 
-### Testing Strategy
+### Current Testing Infrastructure
 
 ```bash
-# Unit Tests (90%+ coverage target)
+# GitHub Actions CI/CD Pipeline
+# - Automated testing on push/PR
+# - Security scanning with Snyk
+# - Docker image builds
+# - K6 performance testing
+# - Multi-environment deployments
+
+# Manual Testing (Development Phase)
+docker-compose exec web-app npm test           # Run web app tests
+docker-compose exec auth-service npm test      # Run auth service tests
+docker-compose logs auth-service               # Check service logs
+curl http://localhost:3000/api/health         # Test web app health
+curl http://localhost:3001/health             # Test auth service health
+```
+
+### Future Testing Strategy (Post-Implementation)
+
+```bash
+# Unit Tests (90%+ coverage target) - To be implemented
 npm run test:unit                    # All unit tests
 npm run test:unit:auth               # Auth service only
 npm run test:unit:coverage           # Coverage report
 
-# Integration Tests
+# Integration Tests - To be implemented
 npm run test:integration             # All integration tests
 npm run test:integration:api         # API integration tests
 npm run test:integration:db          # Database integration tests
 
-# End-to-End Tests
+# End-to-End Tests - To be implemented
 npm run test:e2e                     # Full E2E test suite
 npm run test:e2e:auth                # Authentication flows
 npm run test:e2e:linkedin            # LinkedIn integration flows
-npm run test:e2e:ai                  # AI content generation flows
 
-# Performance Testing
+# Performance Testing (Implemented in CI/CD)
+# K6 performance tests run automatically in GitHub Actions
 npm run test:load                    # Load testing with k6
-npm run test:stress                  # Stress testing
 npm run test:performance             # Performance regression tests
 
-# Security Testing
+# Security Testing (Implemented in CI/CD)
+# Snyk security scans run automatically in GitHub Actions
 npm run test:security                # Security vulnerability scans
-npm run test:penetration             # Penetration testing suite
-```
-
-### Test Environment Setup
-
-```bash
-# Set up test databases
-npm run test:db:setup
-
-# Start test environment
-docker-compose -f docker-compose.test.yml up -d
-
-# Run full test suite
-npm run test:all
 ```
 
 ## 🚀 Deployment
 
-### Production Deployment
+### Current Deployment Infrastructure
+
+#### GitHub Actions CI/CD Pipeline (Implemented)
+
+The project includes a comprehensive CI/CD pipeline with:
+
+- **Automated Testing**: Unit tests, integration tests, security scans
+- **Multi-Service Builds**: Docker images for all services
+- **Performance Testing**: K6 load testing
+- **Security Scanning**: Snyk vulnerability detection
+- **Multi-Environment Deployment**: Development and production environments
+- **Kubernetes Integration**: Automated deployment to K8s clusters
+
+#### Manual Deployment (Development)
+
+```bash
+# Build all Docker images locally
+docker-compose build
+
+# Push to registry (configure your registry)
+docker-compose push
+
+# Deploy using Docker Compose (development)
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+### Future Production Deployment (To be implemented)
 
 #### Prerequisites
 
@@ -407,7 +437,7 @@ npm run test:all
 - Production databases (PostgreSQL, Redis)
 - External service accounts (LinkedIn, OpenAI, Stripe)
 
-#### Deploy to Production
+#### Deployment Commands (To be implemented)
 
 ```bash
 # Build production images
@@ -420,42 +450,89 @@ npm run deploy:production
 npm run health-check:production
 ```
 
-#### Environment-Specific Deployments
+### Infrastructure as Code (Future Implementation)
 
 ```bash
-# Development Environment
-npm run deploy:dev
-
-# Staging Environment
-npm run deploy:staging
-
-# Production Environment
-npm run deploy:prod
-```
-
-### Infrastructure as Code
-
-```bash
-# Provision infrastructure with Terraform
+# Provision infrastructure with Terraform (to be implemented)
 cd infrastructure/terraform
 terraform init
 terraform plan
 terraform apply
 
-# Deploy Kubernetes manifests
+# Deploy Kubernetes manifests (to be implemented)
 kubectl apply -f infrastructure/kubernetes/
 ```
 
 ### Monitoring & Health Checks
 
-```bash
-# Application health
-curl https://api.inergize.com/health
+#### Current Health Checks
 
-# Service-specific health checks
-curl https://api.inergize.com/auth/health
-curl https://api.inergize.com/linkedin/health
-curl https://api.inergize.com/ai/health
+```bash
+# Local development health checks
+curl http://localhost:3000/api/health          # Web application
+curl http://localhost:3001/health              # Auth service
+curl http://localhost:3002/health              # User service
+curl http://localhost:8001/                    # Kong admin API
+curl http://localhost:9200/_cluster/health     # Elasticsearch
+```
+
+#### Service Status Monitoring
+
+```bash
+# Check all services status
+docker-compose ps
+
+# Check specific service logs
+docker-compose logs -f web-app
+docker-compose logs -f auth-service
+docker-compose logs -f postgres
+
+# Monitor resource usage
+docker stats
+```
+
+### Troubleshooting
+
+#### Common Issues
+
+**Services not starting:**
+```bash
+# Check service dependencies
+docker-compose up -d postgres redis
+docker-compose logs postgres redis
+
+# Rebuild services
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+**Port conflicts:**
+```bash
+# Check what's using the ports
+lsof -i :3000  # Web app
+lsof -i :5432  # PostgreSQL
+lsof -i :6379  # Redis
+
+# Stop conflicting services or change ports in docker-compose.yml
+```
+
+**Database connection issues:**
+```bash
+# Connect to database manually
+docker-compose exec postgres psql -U inergize_user -d inergize_dev
+
+# Check database logs
+docker-compose logs postgres
+```
+
+**Health check failures:**
+```bash
+# Check if services are responding
+curl -v http://localhost:3000/api/health
+docker-compose exec web-app wget --spider http://localhost:3000/
+
+# Check service logs for errors
+docker-compose logs -f web-app
 ```
 
 ## 🔒 Security & Compliance
