@@ -1,0 +1,373 @@
+# InErgize Release Workflow
+# Automated release process with semantic versioning
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - prerelease
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # Check if release is needed
+  check-release:
+    name: Check Release Needed
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      release_type: ${{ steps.check.outputs.release_type }}
+      current_version: ${{ steps.check.outputs.current_version }}
+      next_version: ${{ steps.check.outputs.next_version }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install semantic-release
+        run: |
+          npm install -g semantic-release \
+            @semantic-release/changelog \
+            @semantic-release/git \
+            @semantic-release/github \
+            @semantic-release/npm \
+            conventional-changelog-conventionalcommits
+
+      - name: Check for release
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          # Get current version
+          current_version=$(node -p "require('./package.json').version")
+          echo "current_version=$current_version" >> $GITHUB_OUTPUT
+          
+          # Check if manual release
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "release_type=${{ github.event.inputs.release_type }}" >> $GITHUB_OUTPUT
+            
+            # Calculate next version for manual release
+            if [[ "${{ github.event.inputs.release_type }}" == "major" ]]; then
+              next_version=$(npx semver $current_version -i major)
+            elif [[ "${{ github.event.inputs.release_type }}" == "minor" ]]; then
+              next_version=$(npx semver $current_version -i minor)
+            elif [[ "${{ github.event.inputs.release_type }}" == "prerelease" ]]; then
+              next_version=$(npx semver $current_version -i prerelease --preid=rc)
+            else
+              next_version=$(npx semver $current_version -i patch)
+            fi
+            echo "next_version=$next_version" >> $GITHUB_OUTPUT
+          else
+            # Check if there are changes that warrant a release
+            if npx semantic-release --dry-run --no-ci | grep -q "Published release"; then
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "release_type=auto" >> $GITHUB_OUTPUT
+              
+              # Get next version from semantic-release
+              next_version=$(npx semantic-release --dry-run --no-ci | grep "Published release" | sed 's/.*Published release \([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/')
+              echo "next_version=$next_version" >> $GITHUB_OUTPUT
+            else
+              echo "should_release=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+  # Create release
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: check-release
+    if: needs.check-release.outputs.should_release == 'true'
+    
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      release_url: ${{ steps.release.outputs.release_url }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "InErgize Bot"
+          git config --global user.email "bot@inergize.com"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Install changelog generator
+          npm install -g conventional-changelog-cli
+          
+          # Generate changelog
+          conventional-changelog -p conventionalcommits -i CHANGELOG.md -s -r 0
+          
+          # Get latest changelog entry
+          changelog_content=$(sed -n '/^## /,/^## /p' CHANGELOG.md | head -n -1 | tail -n +2)
+          
+          # Save changelog for release notes
+          echo "$changelog_content" > /tmp/release_notes.md
+
+      - name: Update version
+        id: version
+        run: |
+          if [[ "${{ needs.check-release.outputs.release_type }}" == "auto" ]]; then
+            # Use semantic-release for automatic versioning
+            npx semantic-release
+            new_version=$(node -p "require('./package.json').version")
+          else
+            # Manual version bump
+            new_version="${{ needs.check-release.outputs.next_version }}"
+            npm version $new_version --no-git-tag-version
+            
+            # Update all service package.json files
+            for service in services/*/package.json web/package.json; do
+              if [[ -f "$service" ]]; then
+                jq ".version = \"$new_version\"" "$service" > "${service}.tmp" && mv "${service}.tmp" "$service"
+              fi
+            done
+            
+            # Commit version changes
+            git add .
+            git commit -m "chore(release): bump version to $new_version"
+            git push origin main
+          fi
+          
+          echo "version=$new_version" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub release
+        id: release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          release_name: Release v${{ steps.version.outputs.version }}
+          body_path: /tmp/release_notes.md
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, 'rc') }}
+
+      - name: Update release outputs
+        run: |
+          echo "release_url=${{ steps.release.outputs.html_url }}" >> $GITHUB_OUTPUT
+
+  # Build and publish Docker images with release tags
+  build-release:
+    name: Build Release Images
+    runs-on: ubuntu-latest
+    needs: [check-release, release]
+    if: needs.check-release.outputs.should_release == 'true'
+    
+    strategy:
+      matrix:
+        service: [auth-service, user-service, web]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push release images
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.service == 'web' && 'web/Dockerfile' || format('services/{0}/Dockerfile', matrix.service) }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ matrix.service }}:v${{ needs.release.outputs.version }}
+            ghcr.io/${{ github.repository }}/${{ matrix.service }}:latest
+          build-args: |
+            VERSION=${{ needs.release.outputs.version }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            COMMIT_SHA=${{ github.sha }}
+
+  # Deploy release to production
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [check-release, release, build-release]
+    if: needs.check-release.outputs.should_release == 'true'
+    
+    environment:
+      name: production
+      url: https://app.inergize.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Update ECS task definitions
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          # Update task definitions with new image tags
+          for service in auth-service user-service web; do
+            # Get current task definition
+            task_def=$(aws ecs describe-task-definition \
+              --task-definition inergize-${service}-production \
+              --query 'taskDefinition' \
+              --output json)
+            
+            # Update image URI
+            updated_task_def=$(echo $task_def | jq --arg image "ghcr.io/${{ github.repository }}/${service}:v${VERSION}" \
+              '.containerDefinitions[0].image = $image | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy)')
+            
+            # Register new task definition
+            aws ecs register-task-definition \
+              --cli-input-json "$updated_task_def" \
+              --query 'taskDefinition.taskDefinitionArn' \
+              --output text
+          done
+
+      - name: Deploy services
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          # Deploy each service
+          for service in auth-service user-service web; do
+            aws ecs update-service \
+              --cluster inergize-production \
+              --service inergize-${service}-production \
+              --force-new-deployment
+          done
+          
+          # Wait for all deployments to complete
+          for service in auth-service user-service web; do
+            echo "Waiting for ${service} deployment to complete..."
+            aws ecs wait services-stable \
+              --cluster inergize-production \
+              --services inergize-${service}-production
+          done
+
+      - name: Run smoke tests
+        run: |
+          # Health check
+          curl -f https://app.inergize.com/api/health || exit 1
+          
+          # Service availability tests
+          curl -f https://app.inergize.com/api/auth/health || exit 1
+          curl -f https://app.inergize.com/api/users/health || exit 1
+          
+          # Basic functionality test
+          curl -f https://app.inergize.com/api/status || exit 1
+
+  # Post-release tasks
+  post-release:
+    name: Post-Release Tasks
+    runs-on: ubuntu-latest
+    needs: [release, deploy-production]
+    if: always() && needs.release.result == 'success'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create deployment notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          text: |
+            🚀 **New Release Deployed!**
+            
+            **Version:** v${{ needs.release.outputs.version }}
+            **Environment:** Production
+            **Release Notes:** ${{ needs.release.outputs.release_url }}
+            
+            **Services Updated:**
+            • Auth Service
+            • User Service  
+            • Web Application
+            
+            **URLs:**
+            • Production: https://app.inergize.com
+            • Monitoring: https://grafana.inergize.com
+            • Status: https://status.inergize.com
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Update documentation
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          # Update version in documentation
+          sed -i "s/version: .*/version: ${{ needs.release.outputs.version }}/" docs/api.yml
+          
+          # Commit documentation updates
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git config --global user.name "InErgize Bot"
+            git config --global user.email "bot@inergize.com"
+            git add docs/
+            git commit -m "docs: update version to ${{ needs.release.outputs.version }}"
+            git push origin main
+          fi
+
+      - name: Trigger external integrations
+        run: |
+          # Trigger documentation site rebuild
+          curl -X POST -H "Authorization: Bearer ${{ secrets.DOCS_WEBHOOK_TOKEN }}" \
+            "${{ secrets.DOCS_WEBHOOK_URL }}"
+          
+          # Update status page
+          curl -X POST -H "Authorization: Bearer ${{ secrets.STATUS_PAGE_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"title": "New Release Deployed", "body": "Version ${{ needs.release.outputs.version }} has been successfully deployed to production."}' \
+            "${{ secrets.STATUS_PAGE_URL }}/incidents"
+
+      - name: Archive release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-v${{ needs.release.outputs.version }}
+          path: |
+            CHANGELOG.md
+            package.json
+            */package.json
+          retention-days: 90
