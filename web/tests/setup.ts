@@ -1,16 +1,22 @@
 import '@testing-library/jest-dom';
 import { TextEncoder, TextDecoder } from 'util';
+import React from 'react';
 
 // Polyfills for jsdom environment
 Object.assign(global, { TextDecoder, TextEncoder });
 
 // Mock IntersectionObserver
 global.IntersectionObserver = class IntersectionObserver {
+  root: Element | null = null;
+  rootMargin: string = '';
+  thresholds: ReadonlyArray<number> = [];
+  
   constructor() {}
   disconnect() {}
   observe() {}
   unobserve() {}
-};
+  takeRecords(): IntersectionObserverEntry[] { return []; }
+} as any;
 
 // Mock ResizeObserver
 global.ResizeObserver = class ResizeObserver {
@@ -71,16 +77,16 @@ jest.mock('next/link', () => {
 
 // Mock next/image
 jest.mock('next/image', () => {
-  return (props: any) => {
+  return function MockImage(props: any) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img {...props} alt={props.alt} />;
+    return React.createElement('img', { ...props, alt: props.alt });
   };
 });
 
 // Mock next/head
 jest.mock('next/head', () => {
-  return ({ children }: { children: React.ReactNode }) => {
-    return <>{children}</>;
+  return function MockHead({ children }: { children: React.ReactNode }) {
+    return React.createElement(React.Fragment, {}, children);
   };
 });
 
