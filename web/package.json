@@ -35,6 +35,8 @@
     "yup": "^1.5.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
@@ -43,6 +45,7 @@
     "eslint-config-next": "^15.4.0",
     "jest": "^30.0.5",
     "jest-environment-jsdom": "^30.0.0",
+    "ts-jest": "^29.4.0",
     "typescript": "^5.8.3"
   },
   "keywords": [
