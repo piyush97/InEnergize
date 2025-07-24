@@ -1,7 +1,7 @@
 services:
   # PostgreSQL Database
   postgres:
-    image: postgres:14-alpine
+    image: postgres:latest
     container_name: inergize-postgres
     environment:
       POSTGRES_DB: inergize_dev
@@ -48,7 +48,7 @@ services:
 
   # Redis Cache
   redis:
-    image: redis:7-alpine
+    image: redis:latest
     container_name: inergize-redis
     command: redis-server --appendonly yes --requirepass inergize_redis_password
     volumes:
@@ -67,7 +67,7 @@ services:
 
   # Elasticsearch for search and logging
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.18.4
     container_name: inergize-elasticsearch
     environment:
       - discovery.type=single-node
@@ -90,7 +90,7 @@ services:
 
   # Kibana for log visualization
   kibana:
-    image: docker.elastic.co/kibana/kibana:8.8.0
+    image: docker.elastic.co/kibana/kibana:8.18.4
     container_name: inergize-kibana
     environment:
       ELASTICSEARCH_HOSTS: http://elasticsearch:9200
