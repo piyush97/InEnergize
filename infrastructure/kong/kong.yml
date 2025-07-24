@@ -1,0 +1,417 @@
+# Kong API Gateway Configuration for InErgize Platform
+# This file defines the declarative configuration for Kong in DB-less mode
+
+_format_version: "3.0"
+_transform: true
+
+# Define upstream services
+upstreams:
+  - name: auth-service
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        healthy:
+          interval: 30
+          successes: 1
+        unhealthy:
+          interval: 30
+          tcp_failures: 3
+          http_failures: 3
+    targets:
+      - target: auth-service:3001
+
+  - name: user-service  
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        healthy:
+          interval: 30
+          successes: 1
+        unhealthy:
+          interval: 30
+          tcp_failures: 3
+          http_failures: 3
+    targets:
+      - target: user-service:3002
+
+  - name: linkedin-service
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        healthy:
+          interval: 30
+          successes: 1
+        unhealthy:
+          interval: 30
+          tcp_failures: 3
+          http_failures: 3
+    targets:
+      - target: linkedin-service:3003
+
+  - name: ai-service
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        healthy:
+          interval: 30
+          successes: 1
+        unhealthy:
+          interval: 30
+          tcp_failures: 3
+          http_failures: 3
+    targets:
+      - target: ai-service:3004
+
+  - name: analytics-service
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        healthy:
+          interval: 30
+          successes: 1
+        unhealthy:
+          interval: 30
+          tcp_failures: 3
+          http_failures: 3
+    targets:
+      - target: analytics-service:3005
+
+  - name: scheduler-service
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        healthy:
+          interval: 30
+          successes: 1
+        unhealthy:
+          interval: 30
+          tcp_failures: 3
+          http_failures: 3
+    targets:
+      - target: scheduler-service:3006
+
+  - name: automation-service
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        healthy:
+          interval: 30
+          successes: 1
+        unhealthy:
+          interval: 30
+          tcp_failures: 3
+          http_failures: 3
+    targets:
+      - target: automation-service:3007
+
+  - name: notification-service
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        healthy:
+          interval: 30
+          successes: 1
+        unhealthy:
+          interval: 30
+          tcp_failures: 3
+          http_failures: 3
+    targets:
+      - target: notification-service:3008
+
+# Define services
+services:
+  # Authentication Service
+  - name: auth-service
+    url: http://auth-service
+    retries: 3
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    routes:
+      - name: auth-routes
+        paths:
+          - /api/v1/auth
+        strip_path: true
+        preserve_host: false
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-CSRF-Token
+          exposed_headers:
+            - X-Auth-Token
+          credentials: true
+          max_age: 3600
+
+  # User Management Service
+  - name: user-service
+    url: http://user-service
+    retries: 3
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    routes:
+      - name: user-routes
+        paths:
+          - /api/v1/users
+        strip_path: true
+        preserve_host: false
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+          credentials: true
+          max_age: 3600
+
+  # LinkedIn Integration Service  
+  - name: linkedin-service
+    url: http://linkedin-service
+    retries: 3
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    routes:
+      - name: linkedin-routes
+        paths:
+          - /api/v1/linkedin
+        strip_path: true
+        preserve_host: false
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+          credentials: true
+          max_age: 3600
+
+  # AI Content Service
+  - name: ai-service
+    url: http://ai-service
+    retries: 3
+    connect_timeout: 120000
+    write_timeout: 120000
+    read_timeout: 120000
+    routes:
+      - name: ai-routes
+        paths:
+          - /api/v1/ai
+        strip_path: true
+        preserve_host: false
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+          credentials: true
+          max_age: 3600
+
+  # Analytics Service
+  - name: analytics-service
+    url: http://analytics-service
+    retries: 3
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    routes:
+      - name: analytics-routes
+        paths:
+          - /api/v1/analytics
+        strip_path: true
+        preserve_host: false
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+          credentials: true
+          max_age: 3600
+
+  # Scheduler Service
+  - name: scheduler-service
+    url: http://scheduler-service
+    retries: 3
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    routes:
+      - name: scheduler-routes
+        paths:
+          - /api/v1/scheduler
+        strip_path: true
+        preserve_host: false
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+          credentials: true
+          max_age: 3600
+
+  # Automation Service
+  - name: automation-service
+    url: http://automation-service
+    retries: 3
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    routes:
+      - name: automation-routes
+        paths:
+          - /api/v1/automation
+        strip_path: true
+        preserve_host: false
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+          credentials: true
+          max_age: 3600
+
+  # Notification Service
+  - name: notification-service
+    url: http://notification-service
+    retries: 3
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    routes:
+      - name: notification-routes
+        paths:
+          - /api/v1/notifications
+        strip_path: true
+        preserve_host: false
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+          credentials: true
+          max_age: 3600
+
+# Global plugins
+plugins:
+  # Rate limiting
+  - name: rate-limiting
+    config:
+      minute: 1000
+      hour: 10000
+      day: 100000
+      policy: local
+      fault_tolerant: true
+      hide_client_headers: false
+
+  # Request logging
+  - name: file-log
+    config:
+      path: /tmp/access.log
+      reopen: true
+
+  # Response transformation for consistent API responses and security headers
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "X-API-Version:v1"
+          - "X-Powered-By:InErgize"
+          - "X-Content-Type-Options:nosniff"
+          - "X-Frame-Options:DENY"
+          - "X-XSS-Protection:1; mode=block"
+
+# Consumer groups are not available in this Kong version
+# Will be implemented when upgrading to Kong 3.4+
+# For now, rate limiting is handled by global plugins

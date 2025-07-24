@@ -1,0 +1,33 @@
+# Development overrides for docker-compose
+# This file is automatically loaded by docker-compose for local development
+
+services:
+  # Auth Service - Development overrides
+  auth-service:
+    environment:
+      - LOG_LEVEL=debug
+      - ENABLE_HOT_RELOAD=true
+    volumes:
+      - ./services/auth-service/src:/app/src:ro
+    command: ["npm", "run", "dev"]
+
+  # User Service - Development overrides  
+  user-service:
+    environment:
+      - LOG_LEVEL=debug
+      - ENABLE_HOT_RELOAD=true
+    volumes:
+      - ./services/user-service/src:/app/src:ro
+    command: ["npm", "run", "dev"]
+
+  # Web App - Development overrides
+  web-app:
+    environment:
+      - LOG_LEVEL=debug
+      - FAST_REFRESH=true
+    volumes:
+      - ./web/pages:/app/pages:ro
+      - ./web/components:/app/components:ro
+      - ./web/public:/app/public:ro
+      - ./web/styles:/app/styles:ro
+    command: ["npm", "run", "dev"]

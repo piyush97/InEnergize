@@ -1,0 +1,368 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Management
+model User {
+  id                String      @id @default(cuid())
+  email             String      @unique
+  firstName         String?
+  lastName          String?
+  profileImage      String?
+  emailVerified     DateTime?
+  hashedPassword    String?
+  isActive          Boolean     @default(true)
+  subscriptionTier  SubscriptionTier @default(FREE)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  
+  // OAuth connections
+  accounts          Account[]
+  sessions          Session[]
+  
+  // LinkedIn integration
+  linkedinProfiles  LinkedinProfile[]
+  
+  // Content and automation
+  contentItems      ContentItem[]
+  automationRules   AutomationRule[]
+  
+  // Analytics and usage
+  usageMetrics      UsageMetrics[]
+  
+  // Notifications
+  notifications     Notification[]
+  
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions")
+}
+
+// LinkedIn Profile Management
+model LinkedinProfile {
+  id                    String      @id @default(cuid())
+  userId                String
+  linkedinId            String      @unique
+  linkedinUrl           String
+  
+  // Profile data
+  firstName             String
+  lastName              String
+  headline              String?
+  summary               String?
+  industry              String?
+  location              String?
+  profileImageUrl       String?
+  backgroundImageUrl    String?
+  
+  // Connection data
+  connectionCount       Int         @default(0)
+  followerCount         Int         @default(0)
+  
+  // Settings
+  isActive              Boolean     @default(true)
+  autoPostEnabled       Boolean     @default(false)
+  autoEngageEnabled     Boolean     @default(false)
+  
+  // Timestamps
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  lastSyncedAt          DateTime?
+  
+  // Relations
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contentItems          ContentItem[]
+  automationRules       AutomationRule[]
+  engagementActivities  EngagementActivity[]
+  
+  @@map("linkedin_profiles")
+}
+
+// Content Management
+model ContentItem {
+  id                String      @id @default(cuid())
+  userId            String
+  linkedinProfileId String?
+  
+  // Content data
+  title             String
+  content           String      @db.Text
+  contentType       ContentType
+  status            ContentStatus @default(DRAFT)
+  
+  // Media attachments
+  mediaUrls         String[]    @default([])
+  mediaType         MediaType?
+  
+  // Scheduling
+  scheduledAt       DateTime?
+  publishedAt       DateTime?
+  
+  // Performance
+  views             Int         @default(0)
+  likes             Int         @default(0)
+  comments          Int         @default(0)
+  shares            Int         @default(0)
+  clickThroughRate  Float?
+  engagementRate    Float?
+  
+  // AI enhancement
+  aiGenerated       Boolean     @default(false)
+  aiPrompt          String?
+  
+  // Timestamps
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  
+  // Relations
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  linkedinProfile   LinkedinProfile? @relation(fields: [linkedinProfileId], references: [id])
+  
+  @@map("content_items")
+}
+
+// Automation Rules
+model AutomationRule {
+  id                String          @id @default(cuid())
+  userId            String
+  linkedinProfileId String
+  
+  // Rule configuration
+  name              String
+  description       String?
+  ruleType          AutomationType
+  isActive          Boolean         @default(true)
+  
+  // Trigger conditions
+  triggerConditions Json
+  
+  // Actions to perform
+  actions           Json
+  
+  // Execution settings
+  frequency         FrequencyType
+  timeSlots         String[]        @default([])
+  
+  // Rate limiting
+  maxExecutionsPerDay Int           @default(10)
+  executionsToday   Int             @default(0)
+  lastExecutedAt    DateTime?
+  
+  // Timestamps
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  
+  // Relations
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  linkedinProfile   LinkedinProfile @relation(fields: [linkedinProfileId], references: [id], onDelete: Cascade)
+  
+  @@map("automation_rules")
+}
+
+// Engagement Tracking
+model EngagementActivity {
+  id                String          @id @default(cuid())
+  linkedinProfileId String
+  
+  // Activity details
+  activityType      EngagementType
+  targetType        TargetType      // POST, PROFILE, COMMENT
+  targetId          String          // LinkedIn ID of target
+  targetUrl         String?
+  
+  // Activity data
+  message           String?
+  isSuccessful      Boolean         @default(true)
+  errorMessage      String?
+  
+  // Timestamps
+  createdAt         DateTime        @default(now())
+  
+  // Relations
+  linkedinProfile   LinkedinProfile @relation(fields: [linkedinProfileId], references: [id], onDelete: Cascade)
+  
+  @@map("engagement_activities")
+}
+
+// Analytics and Metrics
+model UsageMetrics {
+  id                String      @id @default(cuid())
+  userId            String
+  
+  // Metric data
+  metricType        MetricType
+  metricValue       Float
+  metricUnit        String?
+  
+  // Context
+  context           Json?
+  
+  // Timestamp (for time-series data)
+  timestamp         DateTime    @default(now())
+  
+  // Relations
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("usage_metrics")
+}
+
+// Notification System
+model Notification {
+  id                String            @id @default(cuid())
+  userId            String
+  
+  // Notification content
+  title             String
+  message           String            @db.Text
+  type              NotificationType
+  priority          NotificationPriority @default(MEDIUM)
+  
+  // Status
+  isRead            Boolean           @default(false)
+  isArchived        Boolean           @default(false)
+  
+  // Metadata
+  metadata          Json?
+  actionUrl         String?
+  
+  // Timestamps
+  createdAt         DateTime          @default(now())
+  readAt            DateTime?
+  
+  // Relations
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("notifications")
+}
+
+// Enums
+enum SubscriptionTier {
+  FREE
+  BASIC
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum ContentType {
+  POST
+  ARTICLE
+  POLL
+  VIDEO
+  CAROUSEL
+  DOCUMENT
+}
+
+enum ContentStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+  FAILED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  DOCUMENT
+  CAROUSEL
+}
+
+enum AutomationType {
+  AUTO_LIKE
+  AUTO_COMMENT
+  AUTO_CONNECT
+  AUTO_POST
+  AUTO_SHARE
+  AUTO_MESSAGE
+}
+
+enum FrequencyType {
+  ONCE
+  DAILY
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+enum EngagementType {
+  LIKE
+  COMMENT
+  SHARE
+  CONNECT
+  MESSAGE
+  VIEW
+  FOLLOW
+}
+
+enum TargetType {
+  POST
+  PROFILE
+  COMMENT
+  ARTICLE
+  COMPANY
+}
+
+enum MetricType {
+  PROFILE_VIEWS
+  POST_IMPRESSIONS
+  ENGAGEMENT_RATE
+  CONNECTION_GROWTH
+  CONTENT_PERFORMANCE
+  API_USAGE
+  AUTOMATION_EXECUTIONS
+}
+
+enum NotificationType {
+  SYSTEM
+  CONTENT_PUBLISHED
+  AUTOMATION_COMPLETED
+  ENGAGEMENT_RECEIVED
+  CONNECTION_REQUEST
+  MILESTONE_ACHIEVED
+  ERROR_ALERT
+  QUOTA_WARNING
+}
+
+enum NotificationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}

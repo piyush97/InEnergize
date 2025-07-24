@@ -1,0 +1,203 @@
+# InErgize Application Alert Rules
+# Prometheus alerting rules for application-specific monitoring
+
+groups:
+  - name: inergize.application.alerts
+    rules:
+      # Service availability alerts
+      - alert: ServiceDown
+        expr: up{job=~"auth-service|user-service|linkedin-service|ai-service|analytics-service|scheduler-service|automation-service|notification-service|web-app"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "Service {{ $labels.instance }} is down"
+          description: "Service {{ $labels.job }} on {{ $labels.instance }} has been down for more than 30 seconds."
+          runbook_url: "https://docs.inergize.com/runbooks/service-down"
+
+      # High error rate alerts
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "High error rate detected for {{ $labels.job }}"
+          description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.job }} on {{ $labels.instance }}"
+          runbook_url: "https://docs.inergize.com/runbooks/high-error-rate"
+
+      # Response time alerts
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "High response time for {{ $labels.job }}"
+          description: "95th percentile response time is {{ $value }}s for {{ $labels.job }}"
+          runbook_url: "https://docs.inergize.com/runbooks/high-response-time"
+
+      # Memory usage alerts
+      - alert: HighMemoryUsage
+        expr: (process_resident_memory_bytes / (1024 * 1024 * 1024)) > 2
+        for: 10m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "High memory usage for {{ $labels.job }}"
+          description: "Memory usage is {{ $value }}GB for {{ $labels.job }} on {{ $labels.instance }}"
+          runbook_url: "https://docs.inergize.com/runbooks/high-memory-usage"
+
+      # CPU usage alerts
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total[5m]) * 100 > 80
+        for: 15m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "High CPU usage for {{ $labels.job }}"
+          description: "CPU usage is {{ $value }}% for {{ $labels.job }} on {{ $labels.instance }}"
+          runbook_url: "https://docs.inergize.com/runbooks/high-cpu-usage"
+
+  - name: inergize.business.alerts
+    rules:
+      # LinkedIn API rate limiting
+      - alert: LinkedInAPIRateLimitApproaching
+        expr: linkedin_api_requests_remaining < 100
+        for: 1m
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: "LinkedIn API rate limit approaching"
+          description: "Only {{ $value }} LinkedIn API requests remaining"
+          runbook_url: "https://docs.inergize.com/runbooks/linkedin-rate-limit"
+
+      # Failed automation alerts
+      - alert: HighAutomationFailureRate
+        expr: rate(automation_tasks_failed_total[5m]) / rate(automation_tasks_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: "High automation failure rate"
+          description: "Automation failure rate is {{ $value | humanizePercentage }}"
+          runbook_url: "https://docs.inergize.com/runbooks/automation-failures"
+
+      # User signup rate alerts
+      - alert: LowUserSignupRate
+        expr: rate(user_signups_total[1h]) < 0.01
+        for: 30m
+        labels:
+          severity: info
+          category: business
+        annotations:
+          summary: "Low user signup rate detected"
+          description: "User signup rate is {{ $value }} per hour"
+          runbook_url: "https://docs.inergize.com/runbooks/low-signup-rate"
+
+      # Payment processing alerts
+      - alert: PaymentProcessingFailure
+        expr: rate(payment_failures_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: business
+        annotations:
+          summary: "Payment processing failures detected"
+          description: "Payment failure rate is {{ $value }} per second"
+          runbook_url: "https://docs.inergize.com/runbooks/payment-failures"
+
+  - name: inergize.infrastructure.alerts
+    rules:
+      # Database connection alerts
+      - alert: DatabaseConnectionFailure
+        expr: up{job="postgres"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "Database connection failure"
+          description: "PostgreSQL database is not responding"
+          runbook_url: "https://docs.inergize.com/runbooks/database-down"
+
+      # Redis connection alerts
+      - alert: RedisConnectionFailure
+        expr: up{job="redis"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "Redis connection failure"
+          description: "Redis cache is not responding"
+          runbook_url: "https://docs.inergize.com/runbooks/redis-down"
+
+      # Elasticsearch cluster health
+      - alert: ElasticsearchClusterUnhealthy
+        expr: elasticsearch_cluster_health_status{color!="green"} == 1
+        for: 2m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "Elasticsearch cluster unhealthy"
+          description: "Elasticsearch cluster status is {{ $labels.color }}"
+          runbook_url: "https://docs.inergize.com/runbooks/elasticsearch-unhealthy"
+
+      # Disk space alerts
+      - alert: HighDiskUsage
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "High disk usage on {{ $labels.instance }}"
+          description: "Disk usage is above 90% on {{ $labels.instance }}"
+          runbook_url: "https://docs.inergize.com/runbooks/high-disk-usage"
+
+  - name: inergize.security.alerts
+    rules:
+      # Suspicious login attempts
+      - alert: SuspiciousLoginAttempts
+        expr: rate(failed_login_attempts_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "Suspicious login attempts detected"
+          description: "Failed login attempt rate is {{ $value }} per second"
+          runbook_url: "https://docs.inergize.com/runbooks/suspicious-logins"
+
+      # Unusual API usage patterns
+      - alert: UnusualAPIUsage
+        expr: rate(http_requests_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "Unusual API usage pattern detected"
+          description: "API request rate is {{ $value }} per second from {{ $labels.instance }}"
+          runbook_url: "https://docs.inergize.com/runbooks/unusual-api-usage"
+
+      # Failed authentication alerts
+      - alert: HighAuthenticationFailureRate
+        expr: rate(authentication_failures_total[5m]) / rate(authentication_attempts_total[5m]) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High authentication failure rate"
+          description: "Authentication failure rate is {{ $value | humanizePercentage }}"
+          runbook_url: "https://docs.inergize.com/runbooks/auth-failures"

@@ -1,0 +1,242 @@
+# Docker Compose configuration for testing environment
+# Lightweight setup for CI/CD and local testing
+
+version: '3.8'
+
+services:
+  # Test database
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: inergize-postgres-test
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: inergize_test
+      POSTGRES_USER: inergize_user
+      POSTGRES_PASSWORD: inergize_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inergize_user -d inergize_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: postgres -c log_statement=all -c log_destination=stderr
+
+  # Test Redis
+  redis-test:
+    image: redis:7-alpine
+    container_name: inergize-redis-test
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_test_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes --appendfsync everysec
+
+  # Mock Elasticsearch for testing
+  elasticsearch-test:
+    image: elasticsearch:8.11.0
+    container_name: inergize-elasticsearch-test
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - http.cors.enabled=true
+      - http.cors.allow-origin="*"
+    ports:
+      - "9201:9200"
+    volumes:
+      - elasticsearch_test_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Auth Service (test mode)
+  auth-service-test:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+      target: test
+    container_name: inergize-auth-service-test
+    restart: unless-stopped
+    environment:
+      NODE_ENV: test
+      PORT: 3001
+      DATABASE_URL: postgresql://inergize_user:inergize_password@postgres-test:5432/inergize_test
+      REDIS_URL: redis://redis-test:6379
+      JWT_SECRET: test-jwt-secret
+      JWT_EXPIRES_IN: 1h
+      BCRYPT_SALT_ROUNDS: 4
+      LOG_LEVEL: error
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # User Service (test mode)
+  user-service-test:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+      target: test
+    container_name: inergize-user-service-test
+    restart: unless-stopped
+    environment:
+      NODE_ENV: test
+      PORT: 3002
+      DATABASE_URL: postgresql://inergize_user:inergize_password@postgres-test:5432/inergize_test
+      REDIS_URL: redis://redis-test:6379
+      AUTH_SERVICE_URL: http://auth-service-test:3001
+      LOG_LEVEL: error
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      auth-service-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Web Application (test mode)
+  web-test:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      target: test
+    container_name: inergize-web-test
+    restart: unless-stopped
+    environment:
+      NODE_ENV: test
+      PORT: 3000
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: test-nextauth-secret
+      AUTH_SERVICE_URL: http://auth-service-test:3001
+      USER_SERVICE_URL: http://user-service-test:3002
+      DATABASE_URL: postgresql://inergize_user:inergize_password@postgres-test:5432/inergize_test
+    ports:
+      - "3000:3000"
+    depends_on:
+      auth-service-test:
+        condition: service_healthy
+      user-service-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Test data seeder
+  test-seeder:
+    build:
+      context: ./database
+      dockerfile: Dockerfile.seeder
+    container_name: inergize-test-seeder
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://inergize_user:inergize_password@postgres-test:5432/inergize_test
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    volumes:
+      - ./database/seeds:/app/seeds
+      - ./database/schema.prisma:/app/schema.prisma
+    command: ["npm", "run", "seed:test"]
+
+  # Mock external services for testing
+  mock-linkedin:
+    image: mockserver/mockserver:latest
+    container_name: inergize-mock-linkedin
+    restart: unless-stopped
+    ports:
+      - "1080:1080"
+    environment:
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/linkedin-mock.json
+    volumes:
+      - ./tests/mocks/linkedin-mock.json:/config/linkedin-mock.json
+
+  mock-openai:
+    image: mockserver/mockserver:latest
+    container_name: inergize-mock-openai
+    restart: unless-stopped
+    ports:
+      - "1081:1080"
+    environment:
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/openai-mock.json
+    volumes:
+      - ./tests/mocks/openai-mock.json:/config/openai-mock.json
+
+  # Test monitoring
+  prometheus-test:
+    image: prom/prometheus:latest
+    container_name: inergize-prometheus-test
+    restart: unless-stopped
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./tests/config/prometheus-test.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=1h'
+      - '--web.enable-lifecycle'
+
+  # Load testing with k6
+  k6:
+    image: grafana/k6:latest
+    container_name: inergize-k6-test
+    volumes:
+      - ./tests/performance:/scripts
+    environment:
+      K6_OUT: json=/results/results.json
+      K6_WEB_DASHBOARD: true
+      K6_WEB_DASHBOARD_EXPORT: /results/report.html
+    depends_on:
+      web-test:
+        condition: service_healthy
+    profiles:
+      - performance
+    command: ["run", "/scripts/load-test.js"]
+
+volumes:
+  postgres_test_data:
+    driver: local
+  redis_test_data:
+    driver: local
+  elasticsearch_test_data:
+    driver: local
+
+networks:
+  default:
+    name: inergize-test-network
+    driver: bridge
