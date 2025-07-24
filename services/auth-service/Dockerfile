@@ -1,5 +1,5 @@
 # Base Node.js image with Alpine for minimal size
-FROM node:18-alpine AS base
+FROM node:22-alpine AS base
 
 # Install dumb-init for proper signal handling
 RUN apk add --no-cache dumb-init
