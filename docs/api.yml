@@ -1,0 +1,1244 @@
+# InErgize Platform API Documentation
+# OpenAPI 3.0 specification for all services
+
+openapi: 3.0.3
+info:
+  title: InErgize Platform API
+  description: |
+    LinkedIn optimization platform API providing user management, content creation, 
+    and automation services with strict LinkedIn compliance.
+    
+    ## Authentication
+    All endpoints require JWT authentication except for public health checks.
+    Include the token in the Authorization header: `Bearer <token>`
+    
+    ## Rate Limiting
+    - Free tier: 100 requests/hour
+    - Professional tier: 1000 requests/hour  
+    - Enterprise tier: 10000 requests/hour
+    
+    ## LinkedIn Compliance
+    All automation features respect LinkedIn's terms of service and rate limits.
+  version: 1.0.0
+  contact:
+    name: InErgize Support
+    email: support@inergize.com
+    url: https://docs.inergize.com
+  license:
+    name: Proprietary
+    url: https://inergize.com/license
+
+servers:
+  - url: https://api.inergize.com/v1
+    description: Production server
+  - url: https://staging-api.inergize.com/v1
+    description: Staging server
+  - url: http://localhost:8000/v1
+    description: Development server
+
+security:
+  - bearerAuth: []
+
+paths:
+  # Health and Status Endpoints
+  /health:
+    get:
+      tags: [System]
+      summary: System health check
+      description: Returns the overall system health status
+      operationId: getSystemHealth
+      security: []
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: System is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /status:
+    get:
+      tags: [System]
+      summary: System status
+      description: Returns detailed system status including service versions
+      operationId: getSystemStatus
+      security: []
+      responses:
+        '200':
+          description: System status information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+
+  # Authentication Endpoints
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register new user
+      description: Create a new user account
+      operationId: registerUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: User login
+      description: Authenticate user and return JWT token
+      operationId: loginUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Too many login attempts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refresh JWT token
+      description: Get a new JWT token using refresh token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: User logout
+      description: Invalidate JWT token and refresh token
+      operationId: logoutUser
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  # User Management Endpoints
+  /users/profile:
+    get:
+      tags: [Users]
+      summary: Get user profile
+      description: Retrieve the authenticated user's profile
+      operationId: getUserProfile
+      responses:
+        '200':
+          description: User profile retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags: [Users]
+      summary: Update user profile
+      description: Update the authenticated user's profile
+      operationId: updateUserProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/subscription:
+    get:
+      tags: [Users]
+      summary: Get subscription details
+      description: Retrieve user's subscription information
+      operationId: getSubscription
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+
+    put:
+      tags: [Users]
+      summary: Update subscription
+      description: Upgrade or downgrade user subscription
+      operationId: updateSubscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubscriptionRequest'
+      responses:
+        '200':
+          description: Subscription updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+
+  # LinkedIn Integration Endpoints
+  /linkedin/connect:
+    post:
+      tags: [LinkedIn]
+      summary: Connect LinkedIn account
+      description: Start LinkedIn OAuth flow to connect user's account
+      operationId: connectLinkedIn
+      responses:
+        '200':
+          description: OAuth URL generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthResponse'
+
+  /linkedin/callback:
+    post:
+      tags: [LinkedIn]
+      summary: LinkedIn OAuth callback
+      description: Handle LinkedIn OAuth callback and store tokens
+      operationId: linkedinCallback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAuthCallbackRequest'
+      responses:
+        '200':
+          description: LinkedIn account connected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkedInProfile'
+
+  /linkedin/profile:
+    get:
+      tags: [LinkedIn]
+      summary: Get LinkedIn profile
+      description: Retrieve connected LinkedIn profile data
+      operationId: getLinkedInProfile
+      responses:
+        '200':
+          description: LinkedIn profile data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkedInProfile'
+        '404':
+          description: LinkedIn account not connected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /linkedin/analytics:
+    get:
+      tags: [LinkedIn]
+      summary: Get LinkedIn analytics
+      description: Retrieve LinkedIn profile analytics and metrics
+      operationId: getLinkedInAnalytics
+      parameters:
+        - name: period
+          in: query
+          description: Analytics period
+          schema:
+            type: string
+            enum: [7d, 30d, 90d]
+            default: 30d
+      responses:
+        '200':
+          description: LinkedIn analytics data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkedInAnalytics'
+
+  # Content Management Endpoints
+  /content:
+    get:
+      tags: [Content]
+      summary: List content items
+      description: Retrieve user's content items with pagination
+      operationId: getContentItems
+      parameters:
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Items per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: type
+          in: query
+          description: Content type filter
+          schema:
+            type: string
+            enum: [POST, CAROUSEL, BANNER]
+        - name: status
+          in: query
+          description: Content status filter
+          schema:
+            type: string
+            enum: [DRAFT, SCHEDULED, PUBLISHED, FAILED]
+      responses:
+        '200':
+          description: Content items retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentListResponse'
+
+    post:
+      tags: [Content]
+      summary: Create content item
+      description: Create a new content item (post, carousel, or banner)
+      operationId: createContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContentRequest'
+      responses:
+        '201':
+          description: Content created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentItem'
+
+  /content/{contentId}:
+    get:
+      tags: [Content]
+      summary: Get content item
+      description: Retrieve a specific content item
+      operationId: getContentItem
+      parameters:
+        - name: contentId
+          in: path
+          required: true
+          description: Content item ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Content item retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentItem'
+        '404':
+          description: Content not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags: [Content]
+      summary: Update content item
+      description: Update an existing content item
+      operationId: updateContentItem
+      parameters:
+        - name: contentId
+          in: path
+          required: true
+          description: Content item ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateContentRequest'
+      responses:
+        '200':
+          description: Content updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentItem'
+
+    delete:
+      tags: [Content]
+      summary: Delete content item
+      description: Delete a content item
+      operationId: deleteContentItem
+      parameters:
+        - name: contentId
+          in: path
+          required: true
+          description: Content item ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Content deleted successfully
+        '404':
+          description: Content not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # AI Content Generation
+  /ai/generate/banner:
+    post:
+      tags: [AI]
+      summary: Generate LinkedIn banner
+      description: Create an AI-generated LinkedIn banner image
+      operationId: generateBanner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateBannerRequest'
+      responses:
+        '200':
+          description: Banner generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeneratedContent'
+        '402':
+          description: Insufficient credits
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /ai/generate/post:
+    post:
+      tags: [AI]
+      summary: Generate LinkedIn post
+      description: Create AI-generated LinkedIn post content
+      operationId: generatePost
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeneratePostRequest'
+      responses:
+        '200':
+          description: Post content generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeneratedContent'
+
+  # Automation Endpoints
+  /automation/rules:
+    get:
+      tags: [Automation]
+      summary: List automation rules
+      description: Retrieve user's automation rules
+      operationId: getAutomationRules
+      responses:
+        '200':
+          description: Automation rules retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AutomationRule'
+
+    post:
+      tags: [Automation]
+      summary: Create automation rule
+      description: Create a new automation rule
+      operationId: createAutomationRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAutomationRuleRequest'
+      responses:
+        '201':
+          description: Automation rule created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationRule'
+
+  /automation/rules/{ruleId}:
+    put:
+      tags: [Automation]
+      summary: Update automation rule
+      description: Update an existing automation rule
+      operationId: updateAutomationRule
+      parameters:
+        - name: ruleId
+          in: path
+          required: true
+          description: Automation rule ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAutomationRuleRequest'
+      responses:
+        '200':
+          description: Automation rule updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationRule'
+
+    delete:
+      tags: [Automation]
+      summary: Delete automation rule
+      description: Delete an automation rule
+      operationId: deleteAutomationRule
+      parameters:
+        - name: ruleId
+          in: path
+          required: true
+          description: Automation rule ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Automation rule deleted
+
+  # Analytics Endpoints
+  /analytics/profile:
+    get:
+      tags: [Analytics]
+      summary: Get profile analytics
+      description: Retrieve comprehensive profile analytics
+      operationId: getProfileAnalytics
+      parameters:
+        - name: period
+          in: query
+          description: Analytics period
+          schema:
+            type: string
+            enum: [7d, 30d, 90d, 1y]
+            default: 30d
+      responses:
+        '200':
+          description: Profile analytics data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileAnalytics'
+
+  /analytics/content:
+    get:
+      tags: [Analytics]
+      summary: Get content analytics
+      description: Retrieve content performance analytics
+      operationId: getContentAnalytics
+      parameters:
+        - name: period
+          in: query
+          description: Analytics period
+          schema:
+            type: string
+            enum: [7d, 30d, 90d]
+            default: 30d
+      responses:
+        '200':
+          description: Content analytics data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentAnalytics'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # System Schemas
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        services:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              status:
+                type: string
+                enum: [healthy, unhealthy]
+              responseTime:
+                type: number
+              error:
+                type: string
+
+    StatusResponse:
+      type: object
+      properties:
+        version:
+          type: string
+        environment:
+          type: string
+        uptime:
+          type: number
+        services:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              version:
+                type: string
+              status:
+                type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        code:
+          type: string
+        details:
+          type: object
+        timestamp:
+          type: string
+          format: date-time
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    # Authentication Schemas
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - firstName
+        - lastName
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        firstName:
+          type: string
+          minLength: 1
+        lastName:
+          type: string
+          minLength: 1
+        marketingConsent:
+          type: boolean
+          default: false
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        rememberMe:
+          type: boolean
+          default: false
+
+    RefreshRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: number
+
+    # User Schemas
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+        lastName:
+          type: string
+        profilePicture:
+          type: string
+          format: uri
+        subscriptionTier:
+          type: string
+          enum: [FREE, PROFESSIONAL, ENTERPRISE]
+        linkedinConnected:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        profilePicture:
+          type: string
+          format: uri
+
+    Subscription:
+      type: object
+      properties:
+        tier:
+          type: string
+          enum: [FREE, PROFESSIONAL, ENTERPRISE]
+        status:
+          type: string
+          enum: [ACTIVE, CANCELLED, EXPIRED, TRIAL]
+        currentPeriodStart:
+          type: string
+          format: date-time
+        currentPeriodEnd:
+          type: string
+          format: date-time
+        cancelAtPeriodEnd:
+          type: boolean
+        features:
+          type: array
+          items:
+            type: string
+
+    UpdateSubscriptionRequest:
+      type: object
+      required:
+        - tier
+      properties:
+        tier:
+          type: string
+          enum: [PROFESSIONAL, ENTERPRISE]
+
+    # LinkedIn Schemas
+    OAuthResponse:
+      type: object
+      properties:
+        authUrl:
+          type: string
+          format: uri
+        state:
+          type: string
+
+    OAuthCallbackRequest:
+      type: object
+      required:
+        - code
+        - state
+      properties:
+        code:
+          type: string
+        state:
+          type: string
+
+    LinkedInProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        linkedinId:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        headline:
+          type: string
+        summary:
+          type: string
+        industry:
+          type: string
+        location:
+          type: string
+        profilePicture:
+          type: string
+          format: uri
+        connections:
+          type: number
+        isActive:
+          type: boolean
+        lastSyncAt:
+          type: string
+          format: date-time
+
+    LinkedInAnalytics:
+      type: object
+      properties:
+        profileViews:
+          type: number
+        searchAppearances:
+          type: number
+        postImpressions:
+          type: number
+        postEngagements:
+          type: number
+        followerGrowth:
+          type: number
+        period:
+          type: string
+
+    # Content Schemas
+    ContentItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [POST, CAROUSEL, BANNER]
+        title:
+          type: string
+        content:
+          type: object
+        status:
+          type: string
+          enum: [DRAFT, SCHEDULED, PUBLISHED, FAILED]
+        scheduledAt:
+          type: string
+          format: date-time
+        publishedAt:
+          type: string
+          format: date-time
+        analytics:
+          type: object
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateContentRequest:
+      type: object
+      required:
+        - type
+        - title
+        - content
+      properties:
+        type:
+          type: string
+          enum: [POST, CAROUSEL, BANNER]
+        title:
+          type: string
+        content:
+          type: object
+        scheduledAt:
+          type: string
+          format: date-time
+        tags:
+          type: array
+          items:
+            type: string
+
+    UpdateContentRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: object
+        scheduledAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [DRAFT, SCHEDULED]
+
+    ContentListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContentItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+    # AI Schemas
+    GenerateBannerRequest:
+      type: object
+      required:
+        - theme
+      properties:
+        theme:
+          type: string
+        industry:
+          type: string
+        colors:
+          type: array
+          items:
+            type: string
+        style:
+          type: string
+          enum: [professional, creative, minimal, modern]
+
+    GeneratePostRequest:
+      type: object
+      required:
+        - topic
+      properties:
+        topic:
+          type: string
+        tone:
+          type: string
+          enum: [professional, casual, enthusiastic, informative]
+        length:
+          type: string
+          enum: [short, medium, long]
+        includeHashtags:
+          type: boolean
+          default: true
+        includeEmojis:
+          type: boolean
+          default: false
+
+    GeneratedContent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        content:
+          type: object
+        prompt:
+          type: string
+        creditsUsed:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+
+    # Automation Schemas
+    AutomationRule:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+          enum: [CONNECTION_REQUEST, POST_ENGAGEMENT, PROFILE_VIEW]
+        trigger:
+          type: object
+        action:
+          type: object
+        schedule:
+          type: object
+        isActive:
+          type: boolean
+        lastRun:
+          type: string
+          format: date-time
+        nextRun:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateAutomationRuleRequest:
+      type: object
+      required:
+        - name
+        - type
+        - trigger
+        - action
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [CONNECTION_REQUEST, POST_ENGAGEMENT, PROFILE_VIEW]
+        trigger:
+          type: object
+        action:
+          type: object
+        schedule:
+          type: object
+        isActive:
+          type: boolean
+          default: true
+
+    UpdateAutomationRuleRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        trigger:
+          type: object
+        action:
+          type: object
+        schedule:
+          type: object
+        isActive:
+          type: boolean
+
+    # Analytics Schemas
+    ProfileAnalytics:
+      type: object
+      properties:
+        overview:
+          type: object
+          properties:
+            profileViews:
+              type: number
+            searchAppearances:
+              type: number
+            connections:
+              type: number
+            followers:
+              type: number
+        growth:
+          type: object
+          properties:
+            profileViews:
+              type: array
+              items:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  value:
+                    type: number
+        demographics:
+          type: object
+          properties:
+            industries:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  percentage:
+                    type: number
+            locations:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  percentage:
+                    type: number
+
+    ContentAnalytics:
+      type: object
+      properties:
+        overview:
+          type: object
+          properties:
+            totalPosts:
+              type: number
+            totalImpressions:
+              type: number
+            totalEngagements:
+              type: number
+            avgEngagementRate:
+              type: number
+        performance:
+          type: array
+          items:
+            type: object
+            properties:
+              contentId:
+                type: string
+              title:
+                type: string
+              impressions:
+                type: number
+              engagements:
+                type: number
+              engagementRate:
+                type: number
+              publishedAt:
+                type: string
+                format: date-time
+
+tags:
+  - name: System
+    description: System health and status endpoints
+  - name: Authentication
+    description: User authentication and authorization
+  - name: Users
+    description: User management and profile operations
+  - name: LinkedIn
+    description: LinkedIn integration and profile management
+  - name: Content
+    description: Content creation and management
+  - name: AI
+    description: AI-powered content generation
+  - name: Automation
+    description: LinkedIn automation rules and workflows
+  - name: Analytics
+    description: Profile and content analytics
