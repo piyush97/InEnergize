@@ -145,3 +145,4 @@ prometheus_data/
 # Claude.md (development assistant file)
 CLAUDE.md
 .env
+.serena/
