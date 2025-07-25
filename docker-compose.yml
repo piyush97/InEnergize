@@ -190,6 +190,41 @@ services:
       retries: 3
       start_period: 30s
 
+  # LinkedIn Integration Service
+  linkedin-service:
+    build:
+      context: ./services/linkedin-service
+      dockerfile: Dockerfile
+    container_name: inergize-linkedin-service
+    environment:
+      - NODE_ENV=production
+      - PORT=3003
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=inergize_redis_password
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - USER_SERVICE_URL=http://user-service:3002
+      - LINKEDIN_CLIENT_ID=${LINKEDIN_CLIENT_ID:-your_linkedin_client_id}
+      - LINKEDIN_CLIENT_SECRET=${LINKEDIN_CLIENT_SECRET:-your_linkedin_client_secret}
+      - LINKEDIN_REDIRECT_URI=${LINKEDIN_REDIRECT_URI:-http://localhost:3000/auth/linkedin/callback}
+    ports:
+      - "3003:3003"
+    networks:
+      - inergize-network
+    depends_on:
+      - postgres
+      - redis
+      - auth-service
+      - user-service
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   # Web Application
   web-app:
     build:
@@ -207,6 +242,7 @@ services:
       - inergize-network
     depends_on:
       - kong
+      - linkedin-service
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
