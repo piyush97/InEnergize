@@ -15,7 +15,14 @@ interface DashboardLayoutProps {
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ className }) => {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [refreshing, setRefreshing] = useState(false);
-  const [currentMetrics, setCurrentMetrics] = useState<any>(null);
+  const [currentMetrics, setCurrentMetrics] = useState<{
+    snapshot: {
+      profileViews: number;
+      connections: number;
+      completenessScore: number;
+      engagementRate: number;
+    };
+  } | null>(null);
 
   useEffect(() => {
     // Set up auto-refresh every 5 minutes

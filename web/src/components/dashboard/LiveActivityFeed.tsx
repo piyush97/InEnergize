@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Eye, Users, TrendingUp, CheckCircle, MessageCircle, Share, Heart, Clock } from 'lucide-react';
+import { Eye, Users, TrendingUp, CheckCircle, Heart, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ActivityEvent {
@@ -28,6 +28,59 @@ const LiveActivityFeed: React.FC<LiveActivityFeedProps> = ({ className }) => {
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
+  const initializeWebSocket = useCallback(() => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) return;
+
+      const wsUrl = `ws://localhost:3007?token=${token}`;
+      const ws = new WebSocket(wsUrl);
+      
+      ws.onopen = () => {
+        setConnected(true);
+        console.log('WebSocket connected for live activity feed');
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          
+          if (message.type === 'real_time_data' || message.type === 'metric_update') {
+            // Convert analytics updates to activity events
+            const newActivity = convertAnalyticsToActivity(message);
+            if (newActivity) {
+              setActivities(prev => [newActivity, ...prev.slice(0, 19)]); // Keep last 20 activities
+            }
+          }
+        } catch (error) {
+          console.error('Failed to parse WebSocket message:', error);
+        }
+      };
+      
+      ws.onclose = () => {
+        setConnected(false);
+        console.log('WebSocket disconnected');
+        
+        // Attempt to reconnect after 5 seconds
+        setTimeout(() => {
+          if (wsRef.current?.readyState === WebSocket.CLOSED) {
+            initializeWebSocket();
+          }
+        }, 5000);
+      };
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setConnected(false);
+      };
+      
+      wsRef.current = ws;
+    } catch (error) {
+      console.error('Failed to initialize WebSocket:', error);
+      setConnected(false);
+    }
+  }, []);
+
   useEffect(() => {
     // Initialize with recent activities
     fetchRecentActivities();
@@ -40,7 +93,7 @@ const LiveActivityFeed: React.FC<LiveActivityFeedProps> = ({ className }) => {
         wsRef.current.close();
       }
     };
-  }, []);
+  }, [initializeWebSocket]);
 
   const fetchRecentActivities = async () => {
     try {
@@ -95,58 +148,13 @@ const LiveActivityFeed: React.FC<LiveActivityFeedProps> = ({ className }) => {
     }
   };
 
-  const initializeWebSocket = () => {
-    try {
-      const token = localStorage.getItem('authToken');
-      if (!token) return;
-
-      const wsUrl = `ws://localhost:3007?token=${token}`;
-      const ws = new WebSocket(wsUrl);
-      
-      ws.onopen = () => {
-        setConnected(true);
-        console.log('WebSocket connected for live activity feed');
-      };
-      
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          
-          if (message.type === 'real_time_data' || message.type === 'metric_update') {
-            // Convert analytics updates to activity events
-            const newActivity = convertAnalyticsToActivity(message);
-            if (newActivity) {
-              setActivities(prev => [newActivity, ...prev.slice(0, 19)]); // Keep last 20 activities
-            }
-          }
-        } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
-        }
-      };
-      
-      ws.onclose = () => {
-        setConnected(false);
-        console.log('WebSocket disconnected');
-        // Attempt to reconnect after 5 seconds
-        setTimeout(() => {
-          if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
-            initializeWebSocket();
-          }
-        }, 5000);
-      };
-      
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setConnected(false);
-      };
-      
-      wsRef.current = ws;
-    } catch (error) {
-      console.error('Failed to initialize WebSocket:', error);
-    }
-  };
-
-  const convertAnalyticsToActivity = (message: any): ActivityEvent | null => {
+  const convertAnalyticsToActivity = (message: {
+    data: {
+      metricType: string;
+      value: number;
+      source?: string;
+    };
+  }): ActivityEvent | null => {
     const { data } = message;
     
     // Convert different types of analytics updates to activity events

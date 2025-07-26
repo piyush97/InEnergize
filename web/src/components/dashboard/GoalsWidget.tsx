@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,22 +40,7 @@ const GoalsWidget: React.FC<GoalsWidgetProps> = ({ className, currentMetrics }) 
   const [targetValue, setTargetValue] = useState('');
   const [deadline, setDeadline] = useState('');
 
-  useEffect(() => {
-    fetchGoals();
-  }, []);
-
-  useEffect(() => {
-    // Update current values when metrics change
-    if (currentMetrics) {
-      setGoals(prev => prev.map(goal => ({
-        ...goal,
-        currentValue: getCurrentValue(goal.type, currentMetrics),
-        achieved: getCurrentValue(goal.type, currentMetrics) >= goal.targetValue
-      })));
-    }
-  }, [currentMetrics]);
-
-  const fetchGoals = async () => {
+  const fetchGoals = useCallback(async () => {
     try {
       // For now, we'll use mock data
       // In a real implementation, this would fetch from the analytics service
@@ -98,9 +83,29 @@ const GoalsWidget: React.FC<GoalsWidgetProps> = ({ className, currentMetrics }) 
       console.error('Failed to fetch goals:', error);
       setLoading(false);
     }
-  };
+  }, [currentMetrics]);
 
-  const getCurrentValue = (type: Goal['type'], metrics: any): number => {
+  useEffect(() => {
+    fetchGoals();
+  }, [fetchGoals]);
+
+  useEffect(() => {
+    // Update current values when metrics change
+    if (currentMetrics) {
+      setGoals(prev => prev.map(goal => ({
+        ...goal,
+        currentValue: getCurrentValue(goal.type, currentMetrics),
+        achieved: getCurrentValue(goal.type, currentMetrics) >= goal.targetValue
+      })));
+    }
+  }, [currentMetrics]);
+
+  const getCurrentValue = (type: Goal['type'], metrics: {
+    profileViews?: number;
+    connections?: number;
+    completenessScore?: number;
+    engagementRate?: number;
+  }): number => {
     switch (type) {
       case 'profileViews':
         return metrics.profileViews || 0;
@@ -137,12 +142,6 @@ const GoalsWidget: React.FC<GoalsWidgetProps> = ({ className, currentMetrics }) 
     return 'text-gray-600';
   };
 
-  const getProgressColor = (progress: number) => {
-    if (progress >= 100) return 'bg-green-500';
-    if (progress >= 75) return 'bg-blue-500';
-    if (progress >= 50) return 'bg-yellow-500';
-    return 'bg-gray-400';
-  };
 
   const calculateProgress = (current: number, target: number): number => {
     return Math.min(Math.round((current / target) * 100), 100);

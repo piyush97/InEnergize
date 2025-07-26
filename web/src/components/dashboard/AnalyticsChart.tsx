@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -35,11 +35,7 @@ const AnalyticsChart: React.FC<AnalyticsChartProps> = ({ className }) => {
   const [timeRange, setTimeRange] = useState('7d');
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>(['profileViews', 'connections']);
 
-  useEffect(() => {
-    fetchAnalytics();
-  }, [timeRange]);
-
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('authToken');
@@ -86,7 +82,11 @@ const AnalyticsChart: React.FC<AnalyticsChartProps> = ({ className }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [timeRange]);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
 
   const formatChartData = () => {
     if (!analytics) return [];
@@ -94,7 +94,7 @@ const AnalyticsChart: React.FC<AnalyticsChartProps> = ({ className }) => {
     const dates = analytics.chartData.profileViews.map(item => item.date);
     
     return dates.map(date => {
-      const dataPoint: any = { date: formatDate(date) };
+      const dataPoint: Record<string, string | number> = { date: formatDate(date) };
       
       if (selectedMetrics.includes('profileViews')) {
         const profileViewsData = analytics.chartData.profileViews.find(item => item.date === date);
@@ -298,7 +298,7 @@ const AnalyticsChart: React.FC<AnalyticsChartProps> = ({ className }) => {
           <div className="mt-6 pt-4 border-t border-gray-200">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
               {selectedMetrics.map(metric => {
-                const values = chartData.map(d => d[metric] || 0);
+                const values = chartData.map(d => Number(d[metric]) || 0);
                 const total = values.reduce((sum, val) => sum + val, 0);
                 const average = values.length ? total / values.length : 0;
                 const growth = values.length >= 2 ? 
