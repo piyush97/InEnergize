@@ -322,7 +322,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, redirectTo = '/d
               <Checkbox
                 id="terms"
                 checked={acceptTerms}
-                onCheckedChange={setAcceptTerms}
+                onCheckedChange={(checked) => setAcceptTerms(checked === true)}
                 disabled={submitLoading || loading}
               />
               <Label htmlFor="terms" className="text-sm text-gray-600 leading-relaxed">
@@ -344,7 +344,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, redirectTo = '/d
               <Checkbox
                 id="newsletter"
                 checked={acceptNewsletter}
-                onCheckedChange={setAcceptNewsletter}
+                onCheckedChange={(checked) => setAcceptNewsletter(checked === true)}
                 disabled={submitLoading || loading}
               />
               <Label htmlFor="newsletter" className="text-sm text-gray-600">

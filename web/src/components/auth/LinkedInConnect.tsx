@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,23 +25,7 @@ const LinkedInConnect: React.FC<LinkedInConnectProps> = ({ onConnectionChange })
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  useEffect(() => {
-    // Handle OAuth callback
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const state = urlParams.get('state');
-    const error = urlParams.get('error');
-
-    if (error) {
-      setError('LinkedIn connection was cancelled or failed');
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (code && state) {
-      handleOAuthCallback(code, state);
-    }
-  }, []);
-
-  const handleOAuthCallback = async (code: string, state: string) => {
+  const handleOAuthCallback = useCallback(async (code: string, state: string) => {
     try {
       setLoading(true);
       setError('');
@@ -77,7 +61,23 @@ const LinkedInConnect: React.FC<LinkedInConnectProps> = ({ onConnectionChange })
     } finally {
       setLoading(false);
     }
-  };
+  }, [updateUser, onConnectionChange]);
+
+  useEffect(() => {
+    // Handle OAuth callback
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const state = urlParams.get('state');
+    const error = urlParams.get('error');
+
+    if (error) {
+      setError('LinkedIn connection was cancelled or failed');
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (code && state) {
+      handleOAuthCallback(code, state);
+    }
+  }, [handleOAuthCallback]);
 
   const handleConnect = async () => {
     try {
