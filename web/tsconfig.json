@@ -17,12 +17,14 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./*"],
-      "@/components/*": ["components/*"],
+      "@/components/*": ["components/*", "src/components/*"],
+      "@/lib/*": ["src/lib/*"],
       "@/pages/*": ["pages/*"],
       "@/styles/*": ["styles/*"],
       "@/utils/*": ["utils/*"],
       "@/hooks/*": ["hooks/*"],
-      "@/types/*": ["types/*"]
+      "@/types/*": ["types/*"],
+      "@/contexts/*": ["src/contexts/*"]
     },
     "plugins": [
       {
