@@ -22,7 +22,7 @@ const LinkedInConnectionStep: React.FC<LinkedInConnectionStepProps> = ({
       })
       toast.success('LinkedIn connected successfully!')
       onComplete()
-    } catch (error) {
+    } catch (_error) {
       toast.error('Failed to connect LinkedIn. Please try again.')
     } finally {
       setIsConnecting(false)

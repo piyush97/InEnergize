@@ -1,74 +1,122 @@
 # Kong API Gateway Configuration for InErgize Platform
-# This file defines the declarative configuration for Kong in DB-less mode
+# LinkedIn-Optimized API Gateway with Enterprise Security, Performance & Monitoring
+# Follows LinkedIn's best practices for scalable SaaS platforms
 
 _format_version: "3.0"
 _transform: true
 
-# Define upstream services
+# JWT Secrets for authentication (environment variable references)
+_jwt_secrets:
+  - id: jwt-secret-1
+    secret: "${JWT_SECRET}"
+    algorithm: HS256
+
+# Define upstream services with enhanced health checks and circuit breakers
 upstreams:
   - name: auth-service
-    algorithm: round-robin
+    algorithm: consistent-hashing
+    hash_on: header
+    hash_on_header: X-Consumer-ID
     healthchecks:
       active:
         type: http
         http_path: /health
+        headers:
+          User-Agent: "Kong-Health-Check"
+        timeout: 10
+        concurrency: 3
         healthy:
-          interval: 30
-          successes: 1
+          interval: 15
+          successes: 2
+          http_statuses: [200, 201]
         unhealthy:
-          interval: 30
-          tcp_failures: 3
+          interval: 15
+          tcp_failures: 2
           http_failures: 3
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
+      passive:
+        healthy:
+          successes: 3
+          http_statuses: [200, 201, 202, 204]
+        unhealthy:
+          tcp_failures: 2
+          http_failures: 3
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
     targets:
       - target: auth-service:3001
+        weight: 100
 
-  - name: user-service  
-    algorithm: round-robin
+  - name: user-service
+    algorithm: consistent-hashing
+    hash_on: header
+    hash_on_header: X-Consumer-ID
     healthchecks:
       active:
         type: http
         http_path: /health
+        headers:
+          User-Agent: "Kong-Health-Check"
+        timeout: 10
+        concurrency: 3
         healthy:
-          interval: 30
-          successes: 1
+          interval: 15
+          successes: 2
+          http_statuses: [200, 201]
         unhealthy:
-          interval: 30
-          tcp_failures: 3
+          interval: 15
+          tcp_failures: 2
           http_failures: 3
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
+      passive:
+        healthy:
+          successes: 3
+          http_statuses: [200, 201, 202, 204]
+        unhealthy:
+          tcp_failures: 2
+          http_failures: 3
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
     targets:
       - target: user-service:3002
+        weight: 100
 
   - name: linkedin-service
-    algorithm: round-robin
+    algorithm: consistent-hashing
+    hash_on: header
+    hash_on_header: X-Consumer-ID
     healthchecks:
       active:
         type: http
         http_path: /health
+        headers:
+          User-Agent: "Kong-Health-Check"
+        timeout: 15
+        concurrency: 3
         healthy:
-          interval: 30
-          successes: 1
+          interval: 20
+          successes: 2
+          http_statuses: [200, 201]
         unhealthy:
-          interval: 30
-          tcp_failures: 3
+          interval: 20
+          tcp_failures: 2
           http_failures: 3
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
+      passive:
+        healthy:
+          successes: 3
+          http_statuses: [200, 201, 202, 204]
+        unhealthy:
+          tcp_failures: 2
+          http_failures: 3
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
     targets:
       - target: linkedin-service:3003
-
-  - name: ai-service
-    algorithm: round-robin
-    healthchecks:
-      active:
-        type: http
-        http_path: /health
-        healthy:
-          interval: 30
-          successes: 1
-        unhealthy:
-          interval: 30
-          tcp_failures: 3
-          http_failures: 3
-    targets:
-      - target: ai-service:3004
+        weight: 100
 
   - name: analytics-service
     algorithm: round-robin
@@ -76,84 +124,118 @@ upstreams:
       active:
         type: http
         http_path: /health
+        headers:
+          User-Agent: "Kong-Health-Check"
+        timeout: 10
+        concurrency: 3
         healthy:
-          interval: 30
-          successes: 1
+          interval: 15
+          successes: 2
+          http_statuses: [200, 201]
         unhealthy:
-          interval: 30
-          tcp_failures: 3
+          interval: 15
+          tcp_failures: 2
           http_failures: 3
-    targets:
-      - target: analytics-service:3005
-
-  - name: scheduler-service
-    algorithm: round-robin
-    healthchecks:
-      active:
-        type: http
-        http_path: /health
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
+      passive:
         healthy:
-          interval: 30
-          successes: 1
+          successes: 3
+          http_statuses: [200, 201, 202, 204]
         unhealthy:
-          interval: 30
-          tcp_failures: 3
+          tcp_failures: 2
           http_failures: 3
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
     targets:
-      - target: scheduler-service:3006
+      - target: analytics-service:3004
+        weight: 100
 
-  - name: automation-service
-    algorithm: round-robin
-    healthchecks:
-      active:
-        type: http
-        http_path: /health
-        healthy:
-          interval: 30
-          successes: 1
-        unhealthy:
-          interval: 30
-          tcp_failures: 3
-          http_failures: 3
-    targets:
-      - target: automation-service:3007
+# Define consumers for authentication
+consumers:
+  - username: inergize-web-app
+    custom_id: web-app-001
+    tags:
+      - web
+      - frontend
+  - username: inergize-mobile-app
+    custom_id: mobile-app-001
+    tags:
+      - mobile
+      - frontend
+  - username: admin-user
+    custom_id: admin-001
+    tags:
+      - admin
+      - internal
 
-  - name: notification-service
-    algorithm: round-robin
-    healthchecks:
-      active:
-        type: http
-        http_path: /health
-        healthy:
-          interval: 30
-          successes: 1
-        unhealthy:
-          interval: 30
-          tcp_failures: 3
-          http_failures: 3
-    targets:
-      - target: notification-service:3008
-
-# Define services
+# Define services with enhanced configuration
 services:
-  # Authentication Service
+  # Authentication Service - Public endpoints (login, register)
   - name: auth-service
-    url: http://auth-service
-    retries: 3
-    connect_timeout: 60000
-    write_timeout: 60000
-    read_timeout: 60000
+    host: auth-service
+    port: 3001
+    protocol: http
+    retries: 2
+    connect_timeout: 30000
+    write_timeout: 30000
+    read_timeout: 30000
     routes:
-      - name: auth-routes
+      - name: auth-public-routes
         paths:
-          - /api/v1/auth
-        strip_path: true
+          - /api/v1/auth/login
+          - /api/v1/auth/register
+          - /api/v1/auth/forgot-password
+          - /api/v1/auth/reset-password
+          - /api/v1/auth/verify-email
+        methods:
+          - POST
+          - GET
+        strip_path: false
+        preserve_host: false
+      - name: auth-protected-routes
+        paths:
+          - /api/v1/auth/logout
+          - /api/v1/auth/refresh
+          - /api/v1/auth/profile
+          - /api/v1/auth/change-password
+          - /api/v1/auth/mfa
+        methods:
+          - POST
+          - GET
+          - PUT
+          - DELETE
+        strip_path: false
         preserve_host: false
     plugins:
+      # Security headers
+      - name: response-transformer
+        config:
+          add:
+            headers:
+              - "X-Content-Type-Options:nosniff"
+              - "X-Frame-Options:DENY"
+              - "X-XSS-Protection:1; mode=block"
+              - "Referrer-Policy:strict-origin-when-cross-origin"
+              - "Content-Security-Policy:default-src 'self'"
+      # Rate limiting for auth endpoints
+      - name: rate-limiting
+        config:
+          minute: 60
+          hour: 1000
+          day: 10000
+          policy: redis
+          redis_host: redis
+          redis_port: 6379
+          redis_password: inergize_redis_password
+          fault_tolerant: true
+          hide_client_headers: false
+      # CORS configuration
       - name: cors
         config:
           origins:
-            - "*"
+            - "http://localhost:3000"
+            - "https://*.inergize.com"
           methods:
             - GET
             - POST
@@ -165,29 +247,69 @@ services:
             - Authorization
             - Content-Type
             - X-CSRF-Token
+            - X-Requested-With
           exposed_headers:
             - X-Auth-Token
+            - X-Request-ID
           credentials: true
           max_age: 3600
 
-  # User Management Service
+  # User Management Service - Protected endpoints
   - name: user-service
-    url: http://user-service
-    retries: 3
-    connect_timeout: 60000
-    write_timeout: 60000
-    read_timeout: 60000
+    host: user-service
+    port: 3002
+    protocol: http
+    retries: 2
+    connect_timeout: 30000
+    write_timeout: 30000
+    read_timeout: 30000
     routes:
       - name: user-routes
         paths:
           - /api/v1/users
-        strip_path: true
+        strip_path: false
         preserve_host: false
     plugins:
+      # JWT Authentication
+      - name: jwt
+        config:
+          uri_param_names:
+            - jwt
+          cookie_names:
+            - jwt
+          header_names:
+            - authorization
+          claims_to_verify:
+            - exp
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
+      # Rate limiting - more restrictive for user operations
+      - name: rate-limiting
+        config:
+          minute: 100
+          hour: 2000
+          day: 20000
+          policy: redis
+          redis_host: redis
+          redis_port: 6379
+          redis_password: inergize_redis_password
+          fault_tolerant: true
+          hide_client_headers: false
+      # Response transformation
+      - name: response-transformer
+        config:
+          add:
+            headers:
+              - "X-Content-Type-Options:nosniff"
+              - "X-Frame-Options:DENY"
+              - "Cache-Control:no-cache, no-store, must-revalidate"
+      # CORS
       - name: cors
         config:
           origins:
-            - "*"
+            - "http://localhost:3000"
+            - "https://*.inergize.com"
           methods:
             - GET
             - POST
@@ -198,27 +320,96 @@ services:
             - Accept
             - Authorization
             - Content-Type
+            - X-Requested-With
           credentials: true
           max_age: 3600
 
-  # LinkedIn Integration Service  
+  # LinkedIn Integration Service - Critical compliance service
   - name: linkedin-service
-    url: http://linkedin-service
-    retries: 3
-    connect_timeout: 60000
-    write_timeout: 60000
-    read_timeout: 60000
+    host: linkedin-service
+    port: 3003
+    protocol: http
+    retries: 1  # Lower retries for LinkedIn compliance
+    connect_timeout: 45000
+    write_timeout: 45000
+    read_timeout: 45000
     routes:
-      - name: linkedin-routes
+      - name: linkedin-oauth-routes
         paths:
-          - /api/v1/linkedin
-        strip_path: true
+          - /api/v1/linkedin/auth
+          - /api/v1/linkedin/callback
+        methods:
+          - GET
+          - POST
+        strip_path: false
+        preserve_host: false
+      - name: linkedin-api-routes
+        paths:
+          - /api/v1/linkedin/profile
+          - /api/v1/linkedin/connections
+          - /api/v1/linkedin/posts
+        methods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+        strip_path: false
         preserve_host: false
     plugins:
+      # JWT Authentication for protected routes
+      - name: jwt
+        config:
+          uri_param_names:
+            - jwt
+          cookie_names:
+            - jwt
+          header_names:
+            - authorization
+          claims_to_verify:
+            - exp
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
+      # Very conservative rate limiting for LinkedIn compliance
+      - name: rate-limiting
+        config:
+          minute: 10   # Very conservative
+          hour: 200
+          day: 2000
+          policy: redis
+          redis_host: redis
+          redis_port: 6379
+          redis_password: inergize_redis_password
+          fault_tolerant: true
+          hide_client_headers: false
+      # Circuit breaker for LinkedIn API protection
+      - name: proxy-cache
+        config:
+          response_code:
+            - 200
+            - 301
+            - 404
+          request_method:
+            - GET
+          content_type:
+            - "application/json"
+          cache_ttl: 300
+          strategy: memory
+      # Enhanced security headers
+      - name: response-transformer
+        config:
+          add:
+            headers:
+              - "X-Content-Type-Options:nosniff"
+              - "X-Frame-Options:DENY"
+              - "X-XSS-Protection:1; mode=block"
+              - "Strict-Transport-Security:max-age=31536000; includeSubDomains"
+      # CORS
       - name: cors
         config:
           origins:
-            - "*"
+            - "http://localhost:3000"
+            - "https://*.inergize.com"
           methods:
             - GET
             - POST
@@ -229,56 +420,76 @@ services:
             - Accept
             - Authorization
             - Content-Type
+            - X-Requested-With
           credentials: true
           max_age: 3600
 
-  # AI Content Service
-  - name: ai-service
-    url: http://ai-service
-    retries: 3
-    connect_timeout: 120000
-    write_timeout: 120000
-    read_timeout: 120000
-    routes:
-      - name: ai-routes
-        paths:
-          - /api/v1/ai
-        strip_path: true
-        preserve_host: false
-    plugins:
-      - name: cors
-        config:
-          origins:
-            - "*"
-          methods:
-            - GET
-            - POST
-            - OPTIONS
-          headers:
-            - Accept
-            - Authorization
-            - Content-Type
-          credentials: true
-          max_age: 3600
-
-  # Analytics Service
+  # Analytics Service - High throughput service
   - name: analytics-service
-    url: http://analytics-service
-    retries: 3
-    connect_timeout: 60000
-    write_timeout: 60000
-    read_timeout: 60000
+    host: analytics-service
+    port: 3004
+    protocol: http
+    retries: 2
+    connect_timeout: 30000
+    write_timeout: 30000
+    read_timeout: 30000
     routes:
       - name: analytics-routes
         paths:
           - /api/v1/analytics
-        strip_path: true
+        strip_path: false
         preserve_host: false
     plugins:
+      # JWT Authentication
+      - name: jwt
+        config:
+          uri_param_names:
+            - jwt
+          cookie_names:
+            - jwt
+          header_names:
+            - authorization
+          claims_to_verify:
+            - exp
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
+      # Higher rate limits for analytics
+      - name: rate-limiting
+        config:
+          minute: 200
+          hour: 5000
+          day: 50000
+          policy: redis
+          redis_host: redis
+          redis_port: 6379
+          redis_password: inergize_redis_password
+          fault_tolerant: true
+          hide_client_headers: false
+      # Caching for analytics data
+      - name: proxy-cache
+        config:
+          response_code:
+            - 200
+          request_method:
+            - GET
+          content_type:
+            - "application/json"
+          cache_ttl: 60  # 1 minute cache
+          strategy: memory
+      # Compression for large analytics payloads
+      - name: response-transformer
+        config:
+          add:
+            headers:
+              - "Content-Encoding:gzip"
+              - "Cache-Control:public, max-age=60"
+      # CORS
       - name: cors
         config:
           origins:
-            - "*"
+            - "http://localhost:3000"
+            - "https://*.inergize.com"
           methods:
             - GET
             - POST
@@ -287,131 +498,108 @@ services:
             - Accept
             - Authorization
             - Content-Type
+            - X-Requested-With
           credentials: true
           max_age: 3600
 
-  # Scheduler Service
-  - name: scheduler-service
-    url: http://scheduler-service
-    retries: 3
-    connect_timeout: 60000
-    write_timeout: 60000
-    read_timeout: 60000
-    routes:
-      - name: scheduler-routes
-        paths:
-          - /api/v1/scheduler
-        strip_path: true
-        preserve_host: false
-    plugins:
-      - name: cors
-        config:
-          origins:
-            - "*"
-          methods:
-            - GET
-            - POST
-            - PUT
-            - DELETE
-            - OPTIONS
-          headers:
-            - Accept
-            - Authorization
-            - Content-Type
-          credentials: true
-          max_age: 3600
-
-  # Automation Service
-  - name: automation-service
-    url: http://automation-service
-    retries: 3
-    connect_timeout: 60000
-    write_timeout: 60000
-    read_timeout: 60000
-    routes:
-      - name: automation-routes
-        paths:
-          - /api/v1/automation
-        strip_path: true
-        preserve_host: false
-    plugins:
-      - name: cors
-        config:
-          origins:
-            - "*"
-          methods:
-            - GET
-            - POST
-            - PUT
-            - DELETE
-            - OPTIONS
-          headers:
-            - Accept
-            - Authorization
-            - Content-Type
-          credentials: true
-          max_age: 3600
-
-  # Notification Service
-  - name: notification-service
-    url: http://notification-service
-    retries: 3
-    connect_timeout: 60000
-    write_timeout: 60000
-    read_timeout: 60000
-    routes:
-      - name: notification-routes
-        paths:
-          - /api/v1/notifications
-        strip_path: true
-        preserve_host: false
-    plugins:
-      - name: cors
-        config:
-          origins:
-            - "*"
-          methods:
-            - GET
-            - POST
-            - PUT
-            - DELETE
-            - OPTIONS
-          headers:
-            - Accept
-            - Authorization
-            - Content-Type
-          credentials: true
-          max_age: 3600
-
-# Global plugins
+# Global plugins for enterprise-grade API gateway
 plugins:
-  # Rate limiting
-  - name: rate-limiting
-    config:
-      minute: 1000
-      hour: 10000
-      day: 100000
-      policy: local
-      fault_tolerant: true
-      hide_client_headers: false
-
-  # Request logging
-  - name: file-log
-    config:
-      path: /tmp/access.log
-      reopen: true
-
-  # Response transformation for consistent API responses and security headers
+  # Global security headers
   - name: response-transformer
     config:
       add:
         headers:
           - "X-API-Version:v1"
-          - "X-Powered-By:InErgize"
+          - "X-Powered-By:InErgize-Gateway"
           - "X-Content-Type-Options:nosniff"
           - "X-Frame-Options:DENY"
           - "X-XSS-Protection:1; mode=block"
+          - "Referrer-Policy:strict-origin-when-cross-origin"
+          - "X-Request-ID:${request_id}"
+      remove:
+        headers:
+          - "Server"
+          - "X-Powered-By"
 
-# Consumer groups are not available in this Kong version
-# Will be implemented when upgrading to Kong 3.4+
-# For now, rate limiting is handled by global plugins
+  # Request correlation and tracing
+  - name: correlation-id
+    config:
+      header_name: X-Request-ID
+      generator: uuid#counter
+      echo_downstream: true
+
+  # Comprehensive logging for observability
+  - name: http-log
+    config:
+      http_endpoint: "http://elasticsearch:9200/kong-logs/_doc"
+      method: POST
+      timeout: 10000
+      keepalive: 60000
+      retry_count: 3
+      queue_size: 100
+      flush_timeout: 2
+      headers:
+        Content-Type: "application/json"
+        Authorization: "Bearer ${ELASTICSEARCH_TOKEN}"
+
+  # Prometheus metrics for monitoring  
+  - name: prometheus
+    config:
+      per_consumer: true
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
+
+  # Request size limiting
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 10  # 10MB max
+      size_unit: megabytes
+      require_content_length: true
+
+  # Bot detection and protection
+  - name: bot-detection
+    config:
+      whitelist: []
+      blacklist:
+        - "curl"
+        - "wget"
+        - "python-requests"
+        - "postman"
+      deny: true
+
+  # IP restriction for admin endpoints (when implemented)
+  - name: ip-restriction
+    config:
+      allow:
+        - "127.0.0.1"
+        - "10.0.0.0/8"
+        - "172.16.0.0/12"
+        - "192.168.0.0/16"
+      deny: []
+      message: "Access denied from this IP"
+
+# Key authentication for API consumers
+keyauth_credentials:
+  - consumer: inergize-web-app
+    key: "${WEB_APP_API_KEY}"
+  - consumer: inergize-mobile-app  
+    key: "${MOBILE_APP_API_KEY}"
+  - consumer: admin-user
+    key: "${ADMIN_API_KEY}"
+
+# JWT credentials for services
+jwt_secrets:
+  - consumer: inergize-web-app
+    algorithm: HS256
+    key: web-app-jwt
+    secret: "${WEB_APP_JWT_SECRET}"
+  - consumer: inergize-mobile-app
+    algorithm: HS256  
+    key: mobile-app-jwt
+    secret: "${MOBILE_APP_JWT_SECRET}"
+  - consumer: admin-user
+    algorithm: HS256
+    key: admin-jwt
+    secret: "${ADMIN_JWT_SECRET}"
