@@ -114,14 +114,14 @@ services:
     container_name: inergize-kong
     environment:
       KONG_DATABASE: "off"
-      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
+      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.test.yml
       KONG_PROXY_ACCESS_LOG: /dev/stdout
       KONG_ADMIN_ACCESS_LOG: /dev/stdout
       KONG_PROXY_ERROR_LOG: /dev/stderr
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: 0.0.0.0:8001
     volumes:
-      - ./infrastructure/kong/kong.yml:/kong/declarative/kong.yml:ro
+      - ./infrastructure/kong/kong.test.yml:/kong/declarative/kong.test.yml:ro
     ports:
       - "8000:8000"   # Kong proxy
       - "8443:8443"   # Kong proxy SSL
@@ -225,6 +225,42 @@ services:
       retries: 3
       start_period: 30s
 
+  # Analytics Service
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile
+    container_name: inergize-analytics-service
+    environment:
+      - NODE_ENV=production
+      - PORT=3004
+      - DATABASE_URL=postgresql://inergize_user:inergize_password@timescale:5432/inergize_analytics
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=inergize_redis_password
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - WS_ENABLED=true
+      - WS_PORT=3007
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - USER_SERVICE_URL=http://user-service:3002
+    ports:
+      - "3004:3004"
+      - "3007:3007"  # WebSocket port
+    networks:
+      - inergize-network
+    depends_on:
+      - timescale
+      - redis
+      - auth-service
+      - user-service
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   # Web Application
   web-app:
     build:
@@ -243,6 +279,7 @@ services:
     depends_on:
       - kong
       - linkedin-service
+      - analytics-service
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
