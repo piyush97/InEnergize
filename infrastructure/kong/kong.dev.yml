@@ -1,0 +1,259 @@
+# Kong Development Environment Configuration
+# Relaxed security and enhanced debugging for development
+
+_format_version: "3.0"
+_transform: true
+
+# Development-specific upstream configurations
+upstreams:
+  - name: auth-service
+    algorithm: round-robin  # Simpler algorithm for dev
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        timeout: 5
+        concurrency: 1
+        healthy:
+          interval: 30
+          successes: 1
+        unhealthy:
+          interval: 30
+          tcp_failures: 2
+          http_failures: 2
+    targets:
+      - target: localhost:3001
+        weight: 100
+
+  - name: user-service
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        timeout: 5
+        concurrency: 1
+        healthy:
+          interval: 30
+          successes: 1
+        unhealthy:
+          interval: 30
+          tcp_failures: 2
+          http_failures: 2
+    targets:
+      - target: localhost:3002
+        weight: 100
+
+  - name: linkedin-service
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        timeout: 5
+        concurrency: 1
+        healthy:
+          interval: 30
+          successes: 1
+        unhealthy:
+          interval: 30
+          tcp_failures: 2
+          http_failures: 2
+    targets:
+      - target: localhost:3003
+        weight: 100
+
+  - name: analytics-service
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        timeout: 5
+        concurrency: 1
+        healthy:
+          interval: 30
+          successes: 1
+        unhealthy:
+          interval: 30
+          tcp_failures: 2
+          http_failures: 2
+    targets:
+      - target: localhost:3004
+        weight: 100
+
+# Development consumers with simple credentials
+consumers:
+  - username: dev-frontend
+    custom_id: dev-001
+    tags:
+      - development
+      - frontend
+
+# Development services with relaxed security
+services:
+  - name: auth-service
+    host: localhost
+    port: 3001
+    protocol: http
+    retries: 1
+    connect_timeout: 10000
+    write_timeout: 10000
+    read_timeout: 10000
+    routes:
+      - name: auth-dev-routes
+        paths:
+          - /api/v1/auth
+        strip_path: false
+        preserve_host: false
+    plugins:
+      # Relaxed CORS for development
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+            - PATCH
+          headers:
+            - "*"
+          credentials: true
+          max_age: 86400
+
+  - name: user-service
+    host: localhost
+    port: 3002
+    protocol: http
+    retries: 1
+    connect_timeout: 10000
+    write_timeout: 10000
+    read_timeout: 10000
+    routes:
+      - name: user-dev-routes
+        paths:
+          - /api/v1/users
+        strip_path: false
+        preserve_host: false
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+            - PATCH
+          headers:
+            - "*"
+          credentials: true
+          max_age: 86400
+
+  - name: linkedin-service
+    host: localhost
+    port: 3003
+    protocol: http
+    retries: 1
+    connect_timeout: 15000
+    write_timeout: 15000
+    read_timeout: 15000
+    routes:
+      - name: linkedin-dev-routes
+        paths:
+          - /api/v1/linkedin
+        strip_path: false
+        preserve_host: false
+    plugins:
+      # Development rate limiting - very permissive
+      - name: rate-limiting
+        config:
+          minute: 1000
+          hour: 10000
+          day: 100000
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+            - PATCH
+          headers:
+            - "*"
+          credentials: true
+          max_age: 86400
+
+  - name: analytics-service
+    host: localhost
+    port: 3004
+    protocol: http
+    retries: 1
+    connect_timeout: 10000
+    write_timeout: 10000
+    read_timeout: 10000
+    routes:
+      - name: analytics-dev-routes
+        paths:
+          - /api/v1/analytics
+        strip_path: false
+        preserve_host: false
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+            - PATCH
+          headers:
+            - "*"
+          credentials: true
+          max_age: 86400
+
+# Development global plugins - enhanced logging, relaxed security
+plugins:
+  # Request/Response logging for debugging
+  - name: file-log
+    config:
+      path: /tmp/kong-dev.log
+      reopen: true
+      
+  # Add development headers
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "X-Environment:development"
+          - "X-Kong-Dev:true"
+          - "X-Request-ID:${request_id}"
+      remove:
+        headers:
+          - "Server"
+
+  # Request correlation
+  - name: correlation-id
+    config:
+      header_name: X-Request-ID
+      generator: uuid#counter
+      echo_downstream: true
+
+# Development key credentials
+keyauth_credentials:
+  - consumer: dev-frontend
+    key: "dev-api-key-12345"

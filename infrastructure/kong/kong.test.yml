@@ -1,0 +1,115 @@
+# InErgize Kong Configuration - All Services with Security
+_format_version: "3.0"
+
+# Define all services
+services:
+  - name: auth-service
+    url: http://host.docker.internal:3001
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+
+  - name: user-service
+    url: http://inergize-user-service:3002
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+
+  - name: linkedin-service
+    url: http://host.docker.internal:3003
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+
+  - name: analytics-service
+    url: http://host.docker.internal:3004
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+
+# Define routes for all services
+routes:
+  # Auth Service Routes
+  - name: auth-routes
+    service: auth-service
+    paths:
+      - /api/v1/auth
+    strip_path: true
+    preserve_host: false
+
+  # User Service Routes
+  - name: user-routes
+    service: user-service
+    paths:
+      - /api/v1/users
+    strip_path: true
+    preserve_host: false
+
+  # LinkedIn Service Routes
+  - name: linkedin-routes
+    service: linkedin-service
+    paths:
+      - /api/v1/linkedin
+    strip_path: true
+    preserve_host: false
+
+  # Analytics Service Routes
+  - name: analytics-routes
+    service: analytics-service
+    paths:
+      - /api/v1/analytics
+    strip_path: true
+    preserve_host: false
+
+# Global plugins for security and performance
+plugins:
+  # CORS for web app integration
+  - name: cors
+    config:
+      origins:
+        - "http://localhost:3000"
+        - "http://localhost:8000"
+        - "https://localhost:8443"
+      methods:
+        - "GET"
+        - "POST"
+        - "PUT"
+        - "DELETE"
+        - "PATCH"
+        - "OPTIONS"
+      headers:
+        - "Accept"
+        - "Accept-Version"
+        - "Content-Length"
+        - "Content-Type"
+        - "Date"
+        - "Authorization"
+        - "X-Auth-Token"
+      exposed_headers:
+        - "X-Auth-Token"
+        - "X-RateLimit-Remaining"
+      credentials: true
+      max_age: 3600
+
+  # Global rate limiting for API protection
+  - name: rate-limiting
+    config:
+      minute: 100
+      hour: 1000
+      day: 10000
+      policy: local
+      hide_client_headers: false
+
+  # Request logging for monitoring
+  - name: file-log
+    config:
+      path: "/tmp/kong-access.log"
+
+  # Security headers
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "X-Content-Type-Options: nosniff"
+          - "X-Frame-Options: DENY"
+          - "X-XSS-Protection: 1; mode=block"
