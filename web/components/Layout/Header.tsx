@@ -1,5 +1,6 @@
 import React, { Fragment } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useSession, signOut } from 'next-auth/react'
 import { Menu, Transition } from '@headlessui/react'
 import { 
@@ -79,10 +80,12 @@ const Header: React.FC = () => {
                       <Menu.Button className="max-w-xs bg-white flex items-center text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
                         <span className="sr-only">Open user menu</span>
                         {session?.user?.image ? (
-                          <img
+                          <Image
                             className="h-8 w-8 rounded-full"
                             src={session.user.image}
                             alt=""
+                            width={32}
+                            height={32}
                           />
                         ) : (
                           <UserCircleIcon className="h-8 w-8 text-gray-400" />
