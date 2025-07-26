@@ -12,6 +12,7 @@
     "dev:user": "cd services/user-service && npm run dev",
     "dev:linkedin": "cd services/linkedin-service && npm run dev",
     "dev:analytics": "cd services/analytics-service && npm run dev",
+    "dev:health-check": "node scripts/health-check.js",
     "build": "npm run build:services && npm run build:web",
     "build:services": "concurrently \"npm run build:auth\" \"npm run build:user\" \"npm run build:linkedin\" \"npm run build:analytics\"",
     "build:web": "cd web && npm run build",
