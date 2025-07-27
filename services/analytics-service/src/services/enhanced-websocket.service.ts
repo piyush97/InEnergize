@@ -524,7 +524,7 @@ export class EnhancedWebSocketService {
     `, [userId]);
 
     return {
-      totalEngagements: result.rows.reduce((sum, row) => sum + parseInt(row.total_value), 0),
+      totalEngagements: result.rows.reduce((sum: number, row: any) => sum + parseInt(row.total_value), 0),
       byType: result.rows.map((row: any) => ({
         type: row.type,
         value: parseInt(row.total_value),
@@ -804,6 +804,26 @@ export class EnhancedWebSocketService {
       data: alert,
       timestamp: new Date()
     });
+  }
+
+  public broadcast(message: WebSocketMessage): void {
+    const messageString = JSON.stringify(message);
+    let sentCount = 0;
+
+    this.clients.forEach((userConnections, userId) => {
+      userConnections.forEach((ws) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          try {
+            ws.send(messageString);
+            sentCount++;
+          } catch (error) {
+            logger.error('Failed to broadcast message to connection', { error, userId });
+          }
+        }
+      });
+    });
+
+    logger.debug('Message broadcasted', { sentCount, messageType: message.type });
   }
 
   public getUserConnectionCount(userId: string): number {

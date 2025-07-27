@@ -50,7 +50,7 @@ export class EnhancedAnalyticsApp {
 
     // Initialize services
     this.websocketService = new EnhancedWebSocketService();
-    this.ingestionService = new IngestionService(this.websocketService);
+    this.ingestionService = new IngestionService(this.websocketService as any);
     this.alertingService = new AlertingService(this.websocketService);
     this.metricsService = new MetricsService();
     this.migrationRunner = new MigrationRunner();
@@ -128,8 +128,8 @@ export class EnhancedAnalyticsApp {
           JSON.parse(buf.toString());
         } catch (err) {
           logger.warn('Invalid JSON payload received', { 
-            ip: req.ip,
-            userAgent: req.get('User-Agent')
+            ip: (req as any).ip || (req as any).connection?.remoteAddress || req.socket?.remoteAddress,
+            userAgent: (req as any).get?.('User-Agent') || req.headers['user-agent']
           });
           throw new Error('Invalid JSON payload');
         }
@@ -138,7 +138,7 @@ export class EnhancedAnalyticsApp {
     this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
     // Request logging and monitoring
-    this.app.use((req, res, next) => {
+    this.app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
       const start = Date.now();
       const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
@@ -152,8 +152,8 @@ export class EnhancedAnalyticsApp {
           url: req.url,
           statusCode: res.statusCode,
           duration,
-          userAgent: req.get('User-Agent'),
-          ip: req.ip,
+          userAgent: (req as any).get?.('User-Agent') || req.headers['user-agent'],
+          ip: (req as any).ip || (req as any).connection?.remoteAddress || req.socket?.remoteAddress,
           contentLength: res.get('Content-Length'),
           userId: (req as any).user?.userId
         };
@@ -282,13 +282,13 @@ export class EnhancedAnalyticsApp {
     this.app.post('/admin/migrate', authMiddleware, async (req, res) => {
       try {
         await this.migrationRunner.runMigrations();
-        res.json({
+        return res.json({
           success: true,
           message: 'Migrations completed successfully'
         });
       } catch (error) {
         logger.error('Migration failed', { error });
-        res.status(500).json({
+        return res.status(500).json({
           success: false,
           error: 'Migration failed'
         });
@@ -305,13 +305,13 @@ export class EnhancedAnalyticsApp {
 
       try {
         await this.developmentSeeder.seedDevelopmentData();
-        res.json({
+        return res.json({
           success: true,
           message: 'Development data seeded successfully'
         });
       } catch (error) {
         logger.error('Seeding failed', { error });
-        res.status(500).json({
+        return res.status(500).json({
           success: false,
           error: 'Seeding failed'
         });
@@ -321,13 +321,13 @@ export class EnhancedAnalyticsApp {
     this.app.get('/admin/seed/status', authMiddleware, async (req, res) => {
       try {
         const status = await this.developmentSeeder.getSeedStatus();
-        res.json({
+        return res.json({
           success: true,
           data: status
         });
       } catch (error) {
         logger.error('Failed to get seed status', { error });
-        res.status(500).json({
+        return res.status(500).json({
           success: false,
           error: 'Failed to retrieve seed status'
         });
@@ -354,13 +354,13 @@ export class EnhancedAnalyticsApp {
           timestamp: new Date()
         });
 
-        res.status(201).json({
+        return res.status(201).json({
           success: true,
           message: 'Event queued for processing'
         });
       } catch (error) {
         logger.error('Failed to ingest event', { error });
-        res.status(500).json({
+        return res.status(500).json({
           success: false,
           error: 'Failed to process event'
         });

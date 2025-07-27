@@ -129,6 +129,42 @@ class RedisManager {
     return client.hgetall(key);
   }
 
+  public async setex(key: string, ttlSeconds: number, value: string | number | Buffer): Promise<string> {
+    const client = this.getClient();
+    return client.setex(key, ttlSeconds, value);
+  }
+
+  public async lpush(key: string, ...values: string[]): Promise<number> {
+    const client = this.getClient();
+    return client.lpush(key, ...values);
+  }
+
+  public async rpop(key: string, count?: number): Promise<string | string[] | null> {
+    const client = this.getClient();
+    if (count !== undefined) {
+      return client.rpop(key, count);
+    }
+    return client.rpop(key);
+  }
+
+  public async llen(key: string): Promise<number> {
+    const client = this.getClient();
+    return client.llen(key);
+  }
+
+  public async ping(): Promise<string> {
+    const client = this.getClient();
+    return client.ping();
+  }
+
+  public async info(section?: string): Promise<string> {
+    const client = this.getClient();
+    if (section) {
+      return client.info(section);
+    }
+    return client.info();
+  }
+
   public async close(): Promise<void> {
     if (this.client) {
       await this.client.quit();

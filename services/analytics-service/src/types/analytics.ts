@@ -11,7 +11,7 @@ export interface ProfileMetric {
   postsCount: number;
   articlesCount: number;
   engagementRate: number;
-  source: 'linkedin' | 'manual' | 'import';
+  source: 'linkedin' | 'manual' | 'import' | 'development_seed';
 }
 
 export interface EngagementMetric {
@@ -126,7 +126,9 @@ export interface AnalyticsResponse<T = any> {
 }
 
 export interface WebSocketMessage {
-  type: 'metric_update' | 'real_time_data' | 'alert' | 'connection_status' | 'pong';
+  type: 'metric_update' | 'real_time_data' | 'alert' | 'connection_status' | 'pong' | 
+        'subscription_confirmed' | 'unsubscription_confirmed' | 'live_metrics' | 
+        'real_time_summary' | 'alert_threshold_set' | 'subscription_data' | 'error';
   userId?: string;
   data: any;
   timestamp: Date;

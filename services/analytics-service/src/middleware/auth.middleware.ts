@@ -127,3 +127,6 @@ export const requireSubscription = (requiredLevel: string = 'basic') => {
     next();
   };
 };
+
+// Export default middleware for easy import
+export const authMiddleware = authenticateToken;
