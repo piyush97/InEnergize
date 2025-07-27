@@ -6,7 +6,16 @@ import { LinkedInAPIService } from '../services/api.service';
 import { ProfileCompletenessService } from '../services/completeness.service';
 import { LinkedInRateLimitService } from '../services/rateLimit.service';
 import { LinkedInDatabaseService } from '../services/compliance.service';
-import { LinkedInProfile, ProfileCompleteness, LinkedInAnalytics } from '../types/linkedin';
+import { 
+  LinkedInProfile, 
+  ProfileCompleteness, 
+  LinkedInAnalytics,
+  OptimizationSuggestion,
+  OptimizationSuggestionResponse,
+  AISuggestionRequest,
+  AISuggestionResponse,
+  SuggestionCompletionResponse
+} from '../types/linkedin';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -371,6 +380,49 @@ export class LinkedInController {
   }
 
   /**
+   * Get industry benchmarks for profile completeness
+   */
+  async getBenchmarks(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: 'User authentication required',
+          code: 'UNAUTHORIZED'
+        });
+        return;
+      }
+
+      // Get user's profile to determine industry
+      const profileData = await this.databaseService.getCachedProfile(userId);
+      let industry = 'general';
+      
+      if (profileData && profileData.profile.industry) {
+        industry = profileData.profile.industry;
+      }
+
+      // Get industry benchmarks
+      const benchmarks = this.completenessService.getIndustryBenchmarks(industry);
+
+      res.json({
+        success: true,
+        data: {
+          ...benchmarks,
+          industry,
+          retrievedAt: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to fetch industry benchmarks',
+        code: 'BENCHMARKS_ERROR'
+      });
+    }
+  }
+
+  /**
    * Get LinkedIn analytics data
    */
   async getAnalytics(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -654,6 +706,487 @@ export class LinkedInController {
   }
 
   /**
+   * Get compliance status for a user
+   */
+  async getComplianceStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: 'User authentication required',
+          code: 'UNAUTHORIZED'
+        });
+        return;
+      }
+
+      const complianceStatus = await this.rateLimitService.getComplianceStatus(userId);
+
+      res.json({
+        success: true,
+        data: {
+          compliance: complianceStatus,
+          retrievedAt: new Date().toISOString(),
+          statusSummary: {
+            isCompliant: complianceStatus.status === 'COMPLIANT',
+            needsAttention: complianceStatus.status === 'WARNING',
+            hasViolations: complianceStatus.status === 'VIOLATION',
+            safeToOperate: complianceStatus.score >= 70
+          }
+        }
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to get compliance status',
+        code: 'COMPLIANCE_STATUS_ERROR'
+      });
+    }
+  }
+
+  /**
+   * Record a compliance violation (admin endpoint)
+   */
+  async recordViolation(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      const userRole = req.user?.role;
+      
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: 'User authentication required',
+          code: 'UNAUTHORIZED'
+        });
+        return;
+      }
+
+      // Only allow admins to record violations for other users
+      const targetUserId = req.body.userId || userId;
+      if (targetUserId !== userId && userRole !== 'ADMIN') {
+        res.status(403).json({
+          success: false,
+          message: 'Admin access required to record violations for other users',
+          code: 'INSUFFICIENT_PERMISSIONS'
+        });
+        return;
+      }
+
+      const { violationType, details } = req.body;
+
+      if (!violationType) {
+        res.status(400).json({
+          success: false,
+          message: 'Violation type is required',
+          code: 'MISSING_VIOLATION_TYPE'
+        });
+        return;
+      }
+
+      await this.rateLimitService.recordViolation(targetUserId, violationType, details || {});
+
+      res.json({
+        success: true,
+        data: {
+          message: 'Compliance violation recorded successfully',
+          userId: targetUserId,
+          violationType,
+          recordedAt: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to record violation',
+        code: 'VIOLATION_RECORDING_ERROR'
+      });
+    }
+  }
+
+  /**
+   * Get compliance report (admin endpoint)
+   */
+  async getComplianceReport(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const userRole = req.user?.role;
+      
+      if (userRole !== 'ADMIN') {
+        res.status(403).json({
+          success: false,
+          message: 'Admin access required for compliance reports',
+          code: 'INSUFFICIENT_PERMISSIONS'
+        });
+        return;
+      }
+
+      const complianceReport = await this.rateLimitService.getComplianceReport();
+
+      res.json({
+        success: true,
+        data: {
+          report: complianceReport,
+          generatedAt: new Date().toISOString(),
+          summary: {
+            totalCompliantUsers: complianceReport.complianceBreakdown.compliant,
+            totalWarningUsers: complianceReport.complianceBreakdown.warning,
+            totalViolationUsers: complianceReport.complianceBreakdown.violation,
+            complianceRate: complianceReport.totalUsers > 0 
+              ? Math.round((complianceReport.complianceBreakdown.compliant / complianceReport.totalUsers) * 100)
+              : 100,
+            riskLevel: complianceReport.averageComplianceScore >= 80 ? 'LOW' : 
+                      complianceReport.averageComplianceScore >= 60 ? 'MEDIUM' : 'HIGH'
+          }
+        }
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to generate compliance report',
+        code: 'COMPLIANCE_REPORT_ERROR'
+      });
+    }
+  }
+
+  /**
+   * Get profile optimization suggestions
+   */
+  async getOptimizationSuggestions(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: 'User authentication required',
+          code: 'UNAUTHORIZED'
+        });
+        return;
+      }
+
+      // Parse query parameters
+      const {
+        categories,
+        priorities,
+        maxSuggestions = 10,
+        includeCompleted = false
+      } = req.query;
+
+      // Get current profile data and completeness
+      const profileData = await this.databaseService.getCachedProfile(userId);
+      if (!profileData) {
+        res.status(400).json({
+          success: false,
+          message: 'Profile data not found. Please sync your LinkedIn profile first.',
+          code: 'PROFILE_NOT_FOUND'
+        });
+        return;
+      }
+
+      const { profile, completeness } = profileData;
+
+      // Generate optimization suggestions based on completeness analysis
+      const priorityImprovements = this.completenessService.getPriorityImprovements(completeness);
+      const recommendations = this.completenessService.getRecommendations(profile);
+
+      // Convert completeness suggestions to our optimization format
+      const suggestions = await this.generateOptimizationSuggestions(
+        profile,
+        completeness,
+        priorityImprovements,
+        recommendations,
+        userId
+      );
+
+      // Filter suggestions based on query parameters
+      let filteredSuggestions = suggestions;
+
+      if (categories) {
+        const categoryArray = Array.isArray(categories) ? categories : [categories];
+        filteredSuggestions = filteredSuggestions.filter(s => 
+          categoryArray.includes(s.category)
+        );
+      }
+
+      if (priorities) {
+        const priorityArray = Array.isArray(priorities) ? priorities : [priorities];
+        filteredSuggestions = filteredSuggestions.filter(s => 
+          priorityArray.includes(s.priority)
+        );
+      }
+
+      if (!includeCompleted) {
+        filteredSuggestions = filteredSuggestions.filter(s => !s.isCompleted);
+      }
+
+      // Limit results
+      const limitedSuggestions = filteredSuggestions.slice(0, parseInt(maxSuggestions as string));
+
+      // Calculate response metadata
+      const completedCount = suggestions.filter(s => s.isCompleted).length;
+      const potentialScoreIncrease = limitedSuggestions
+        .filter(s => !s.isCompleted)
+        .reduce((sum, s) => sum + s.impact, 0);
+
+      const estimatedTimeToComplete = this.calculateEstimatedTime(
+        limitedSuggestions.filter(s => !s.isCompleted)
+      );
+
+      const nextRecommendedAction = limitedSuggestions
+        .filter(s => !s.isCompleted)
+        .sort((a, b) => {
+          // Sort by priority (high=3, medium=2, low=1) then by impact
+          const priorityOrder = { high: 3, medium: 2, low: 1 };
+          if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
+            return priorityOrder[b.priority] - priorityOrder[a.priority];
+          }
+          return b.impact - a.impact;
+        })[0];
+
+      const response: OptimizationSuggestionResponse = {
+        suggestions: limitedSuggestions,
+        totalCount: filteredSuggestions.length,
+        completedCount,
+        potentialScoreIncrease,
+        estimatedTimeToComplete,
+        nextRecommendedAction
+      };
+
+      res.json({
+        success: true,
+        data: response
+      });
+
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to get optimization suggestions',
+        code: 'OPTIMIZATION_SUGGESTIONS_ERROR'
+      });
+    }
+  }
+
+  /**
+   * Mark optimization suggestion as completed
+   */
+  async completeOptimizationSuggestion(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: 'User authentication required',
+          code: 'UNAUTHORIZED'
+        });
+        return;
+      }
+
+      const { id: suggestionId } = req.params;
+      const { implementedValue, feedback, partialCompletion = false } = req.body;
+
+      if (!suggestionId) {
+        res.status(400).json({
+          success: false,
+          message: 'Suggestion ID is required',
+          code: 'MISSING_SUGGESTION_ID'
+        });
+        return;
+      }
+
+      // Get current profile data to calculate impact
+      const profileDataBefore = await this.databaseService.getCachedProfile(userId);
+      if (!profileDataBefore) {
+        res.status(400).json({
+          success: false,
+          message: 'Profile data not found',
+          code: 'PROFILE_NOT_FOUND'
+        });
+        return;
+      }
+
+      // Find the suggestion to complete
+      const suggestions = await this.getStoredSuggestions(userId);
+      const suggestion = suggestions.find(s => s.id === suggestionId);
+
+      if (!suggestion) {
+        res.status(404).json({
+          success: false,
+          message: 'Optimization suggestion not found',
+          code: 'SUGGESTION_NOT_FOUND'
+        });
+        return;
+      }
+
+      if (suggestion.isCompleted) {
+        res.status(400).json({
+          success: false,
+          message: 'Suggestion is already completed',
+          code: 'SUGGESTION_ALREADY_COMPLETED'
+        });
+        return;
+      }
+
+      // Mark suggestion as completed
+      const completedSuggestion: OptimizationSuggestion = {
+        ...suggestion,
+        isCompleted: !partialCompletion,
+        completedAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      if (implementedValue) {
+        completedSuggestion.suggestedValue = implementedValue;
+      }
+
+      // Store the completion
+      await this.storeSuggestionCompletion(userId, completedSuggestion, feedback);
+
+      // Trigger profile resync to get updated score
+      const accessToken = await this.databaseService.getStoredAccessToken(userId);
+      if (accessToken) {
+        await this.performProfileSync(accessToken, userId);
+      }
+
+      // Get updated profile data to calculate score change
+      const profileDataAfter = await this.databaseService.getCachedProfile(userId);
+      const scoreChange = profileDataAfter 
+        ? profileDataAfter.completeness.score - profileDataBefore.completeness.score
+        : suggestion.impact; // fallback to estimated impact
+
+      // Generate new recommendations
+      const updatedSuggestions = await this.getStoredSuggestions(userId);
+      const nextRecommendations = updatedSuggestions
+        .filter(s => !s.isCompleted)
+        .slice(0, 3);
+
+      const response: SuggestionCompletionResponse = {
+        suggestion: completedSuggestion,
+        profileScoreChange: scoreChange,
+        newProfileScore: profileDataAfter?.completeness.score || profileDataBefore.completeness.score,
+        nextRecommendations,
+        completedAt: completedSuggestion.completedAt!
+      };
+
+      // Track completion event for analytics
+      await this.databaseService.trackLinkedInEvent(userId, 'optimization_suggestion_completed', {
+        suggestionId,
+        field: suggestion.field,
+        category: suggestion.category,
+        impact: suggestion.impact,
+        scoreChange,
+        partialCompletion
+      });
+
+      res.json({
+        success: true,
+        data: response
+      });
+
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to complete optimization suggestion',
+        code: 'SUGGESTION_COMPLETION_ERROR'
+      });
+    }
+  }
+
+  /**
+   * Generate AI-powered suggestions for profile optimization
+   */
+  async generateAISuggestions(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: 'User authentication required',
+          code: 'UNAUTHORIZED'
+        });
+        return;
+      }
+
+      const {
+        field,
+        currentContent,
+        targetAudience,
+        industry,
+        tone = 'professional',
+        maxLength,
+        includeKeywords = []
+      }: AISuggestionRequest = req.body;
+
+      if (!field) {
+        res.status(400).json({
+          success: false,
+          message: 'Field to optimize is required',
+          code: 'MISSING_FIELD'
+        });
+        return;
+      }
+
+      // Get user's profile for context
+      const profileData = await this.databaseService.getCachedProfile(userId);
+      if (!profileData) {
+        res.status(400).json({
+          success: false,
+          message: 'Profile data not found. Please sync your LinkedIn profile first.',
+          code: 'PROFILE_NOT_FOUND'
+        });
+        return;
+      }
+
+      const { profile } = profileData;
+
+      // Generate AI suggestions based on field type
+      const suggestions = await this.generateAIContentSuggestions({
+        field,
+        currentContent: currentContent || this.getFieldValue(profile, field),
+        profile,
+        targetAudience,
+        industry: industry || profile.industry,
+        tone,
+        maxLength,
+        includeKeywords
+      });
+
+      // Generate compliance notes for LinkedIn
+      const complianceNotes = this.generateComplianceNotes(field, suggestions);
+
+      // Estimate impact on profile score
+      const estimatedImpact = this.estimateAIContentImpact(field, currentContent, suggestions[0]);
+
+      const response: AISuggestionResponse = {
+        suggestions,
+        originalContent: currentContent,
+        improvementRationale: this.generateImprovementRationale(field, currentContent, suggestions[0]),
+        keywordOptimization: includeKeywords,
+        complianceNotes,
+        estimatedImpact,
+        generatedAt: new Date()
+      };
+
+      // Track AI suggestion generation for analytics
+      await this.databaseService.trackLinkedInEvent(userId, 'ai_suggestion_generated', {
+        field,
+        tone,
+        estimatedImpact,
+        suggestionCount: suggestions.length
+      });
+
+      res.json({
+        success: true,
+        data: response
+      });
+
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to generate AI suggestions',
+        code: 'AI_SUGGESTION_ERROR'
+      });
+    }
+  }
+
+  /**
    * Get service health status
    */
   async getHealthStatus(req: Request, res: Response): Promise<void> {
@@ -835,6 +1368,424 @@ export class LinkedInController {
   /**
    * Enhanced analytics with historical data
    */
+  /**
+   * Generate optimization suggestions from completeness analysis
+   */
+  private async generateOptimizationSuggestions(
+    profile: LinkedInProfile,
+    completeness: ProfileCompleteness,
+    priorityImprovements: any[],
+    recommendations: any[],
+    userId: string
+  ): Promise<OptimizationSuggestion[]> {
+    const suggestions: OptimizationSuggestion[] = [];
+    const storedSuggestions = await this.getStoredSuggestions(userId);
+
+    // Helper to create suggestion ID
+    const createSuggestionId = (field: string, type: string) => 
+      `${userId}_${field}_${type}_${Date.now()}`;
+
+    // Convert priority improvements to suggestions
+    priorityImprovements.forEach((improvement, index) => {
+      const suggestionId = createSuggestionId(improvement.field, 'priority');
+      
+      // Check if this suggestion already exists
+      const existingSuggestion = storedSuggestions.find(s => 
+        s.field === improvement.field && s.title.includes(improvement.suggestion.substring(0, 20))
+      );
+
+      if (existingSuggestion) {
+        suggestions.push(existingSuggestion);
+        return;
+      }
+
+      suggestions.push({
+        id: suggestionId,
+        field: improvement.field,
+        category: this.mapFieldToCategory(improvement.field),
+        priority: improvement.impact >= 15 ? 'high' : improvement.impact >= 8 ? 'medium' : 'low',
+        impact: improvement.impact,
+        difficulty: improvement.difficulty,
+        timeEstimate: improvement.timeEstimate,
+        title: this.generateSuggestionTitle(improvement.field, improvement.suggestion),
+        description: improvement.suggestion,
+        actionSteps: this.generateActionSteps(improvement.field, profile),
+        complianceNotes: this.generateFieldComplianceNotes(improvement.field),
+        currentValue: this.getFieldValue(profile, improvement.field),
+        isCompleted: false,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    });
+
+    // Convert general recommendations to suggestions
+    recommendations.forEach((rec, index) => {
+      if (suggestions.some(s => s.field === rec.field)) return; // Avoid duplicates
+
+      const suggestionId = createSuggestionId(rec.field, 'recommendation');
+      
+      suggestions.push({
+        id: suggestionId,
+        field: rec.field,
+        category: this.mapFieldToCategory(rec.field),
+        priority: rec.priority,
+        impact: rec.impact,
+        difficulty: rec.priority === 'high' ? 'easy' : rec.priority === 'medium' ? 'medium' : 'hard',
+        timeEstimate: rec.timeEstimate,
+        title: this.generateSuggestionTitle(rec.field, rec.suggestion),
+        description: rec.suggestion,
+        actionSteps: this.generateActionSteps(rec.field, profile),
+        complianceNotes: this.generateFieldComplianceNotes(rec.field),
+        currentValue: this.getFieldValue(profile, rec.field),
+        isCompleted: false,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    });
+
+    return suggestions;
+  }
+
+  /**
+   * Map profile field to optimization category
+   */
+  private mapFieldToCategory(field: string): 'content' | 'engagement' | 'visibility' | 'networking' {
+    const categoryMap: { [key: string]: 'content' | 'engagement' | 'visibility' | 'networking' } = {
+      headline: 'content',
+      summary: 'content',
+      experience: 'content',
+      skills: 'content',
+      education: 'content',
+      certifications: 'content',
+      projects: 'content',
+      languages: 'content',
+      profilePicture: 'visibility',
+      customUrl: 'visibility',
+      connections: 'networking',
+      recommendations: 'networking',
+      volunteerWork: 'engagement',
+      basicInfo: 'visibility'
+    };
+
+    return categoryMap[field] || 'content';
+  }
+
+  /**
+   * Generate action steps for a specific field improvement
+   */
+  private generateActionSteps(field: string, profile: LinkedInProfile): string[] {
+    const stepMap: { [key: string]: string[] } = {
+      headline: [
+        'Review current headline for clarity and impact',
+        'Include your current role and key expertise',
+        'Add value proposition or unique selling point',
+        'Keep within 120 characters for optimal display',
+        'Test different versions and monitor profile views'
+      ],
+      summary: [
+        'Start with a compelling opening statement',
+        'Highlight your key achievements and experience',
+        'Include relevant keywords for your industry',
+        'Add a call-to-action for networking',
+        'Keep paragraphs short and scannable',
+        'Proofread for grammar and spelling'
+      ],
+      experience: [
+        'Add all relevant work positions',
+        'Write detailed descriptions with accomplishments',
+        'Use action verbs and quantify results where possible',
+        'Include keywords relevant to your industry',
+        'Keep descriptions between 50-200 words'
+      ],
+      skills: [
+        'Add 5-15 relevant skills to your profile',
+        'Prioritize skills most important to your career goals',
+        'Ask colleagues and connections for endorsements',
+        'Keep skills list updated with industry trends',
+        'Remove outdated or irrelevant skills'
+      ],
+      profilePicture: [
+        'Use a professional headshot photo',
+        'Ensure good lighting and clear image quality',
+        'Dress appropriately for your industry',
+        'Smile and make eye contact with the camera',
+        'Update photo every 2-3 years'
+      ],
+      connections: [
+        'Send personalized connection requests',
+        'Connect with colleagues, classmates, and industry peers',
+        'Engage with connections\' content regularly',
+        'Attend industry events and follow up with new contacts',
+        'Maintain relationships through regular interaction'
+      ]
+    };
+
+    return stepMap[field] || [
+      'Review current content for completeness',
+      'Research best practices for this field',
+      'Update with relevant and accurate information',
+      'Optimize for LinkedIn search visibility'
+    ];
+  }
+
+  /**
+   * Generate compliance notes for specific fields
+   */
+  private generateFieldComplianceNotes(field: string): string[] {
+    const complianceMap: { [key: string]: string[] } = {
+      headline: [
+        'Avoid misleading job titles or company names',
+        'Do not use excessive keywords or hashtags',
+        'Keep professional and industry-appropriate'
+      ],
+      summary: [
+        'Avoid personal contact information in summary',
+        'Do not include links to external websites',
+        'Keep content professional and truthful',
+        'Respect LinkedIn community guidelines'
+      ],
+      experience: [
+        'Ensure all employment information is accurate',
+        'Do not exaggerate roles or responsibilities',
+        'Respect confidentiality of previous employers',
+        'Use appropriate professional language'
+      ],
+      connections: [
+        'Only connect with people you know professionally',
+        'Do not send spam or automated connection requests',
+        'Respect LinkedIn\'s weekly connection limits',
+        'Personalize connection request messages when possible'
+      ]
+    };
+
+    return complianceMap[field] || [
+      'Ensure all information is accurate and truthful',
+      'Follow LinkedIn community guidelines',
+      'Maintain professional standards'
+    ];
+  }
+
+  /**
+   * Generate suggestion title from field and description
+   */
+  private generateSuggestionTitle(field: string, description: string): string {
+    const titleMap: { [key: string]: string } = {
+      headline: 'Optimize Your Professional Headline',
+      summary: 'Enhance Your Professional Summary',
+      experience: 'Improve Work Experience Details',
+      skills: 'Expand Your Skills Section',
+      profilePicture: 'Add Professional Profile Photo',
+      connections: 'Build Your Professional Network',
+      education: 'Complete Education Information',
+      certifications: 'Add Professional Certifications',
+      projects: 'Showcase Your Projects',
+      languages: 'Add Language Skills',
+      recommendations: 'Get Professional Recommendations',
+      customUrl: 'Create Custom LinkedIn URL'
+    };
+
+    return titleMap[field] || `Improve ${field.charAt(0).toUpperCase() + field.slice(1)}`;
+  }
+
+  /**
+   * Get field value from profile
+   */
+  private getFieldValue(profile: LinkedInProfile, field: string): string {
+    const getLocalizedValue = (obj?: { localized: { [key: string]: string } }) => {
+      if (!obj?.localized) return '';
+      const values = Object.values(obj.localized);
+      return values.length > 0 ? values[0] : '';
+    };
+
+    switch (field) {
+      case 'headline':
+        return profile.headline || '';
+      case 'summary':
+        return profile.summary || '';
+      case 'experience':
+        return `${profile.positions?.length || 0} positions added`;
+      case 'skills':
+        return `${profile.skills?.length || 0} skills added`;
+      case 'education':
+        return `${profile.educations?.length || 0} education entries`;
+      case 'profilePicture':
+        return profile.profilePicture ? 'Photo uploaded' : 'No photo';
+      case 'basicInfo':
+        const firstName = getLocalizedValue(profile.firstName);
+        const lastName = getLocalizedValue(profile.lastName);
+        return `${firstName} ${lastName}`.trim();
+      default:
+        return 'Not specified';
+    }
+  }
+
+  /**
+   * Calculate estimated time to complete multiple suggestions
+   */
+  private calculateEstimatedTime(suggestions: OptimizationSuggestion[]): string {
+    if (suggestions.length === 0) return '0 minutes';
+
+    const timeMap: { [key: string]: number } = {
+      '5 minutes': 5,
+      '10 minutes': 10,
+      '15 minutes': 15,
+      '20 minutes': 20,
+      '30 minutes': 30,
+      '45 minutes': 45,
+      '1 hour': 60,
+      '1-2 hours': 90,
+      '2 hours': 120
+    };
+
+    const totalMinutes = suggestions.reduce((sum, suggestion) => {
+      const minutes = timeMap[suggestion.timeEstimate] || 30; // default to 30 minutes
+      return sum + minutes;
+    }, 0);
+
+    if (totalMinutes < 60) {
+      return `${totalMinutes} minutes`;
+    } else if (totalMinutes < 120) {
+      return `${Math.round(totalMinutes / 60 * 10) / 10} hour${totalMinutes >= 120 ? 's' : ''}`;
+    } else {
+      const hours = Math.round(totalMinutes / 60 * 10) / 10;
+      return `${hours} hours`;
+    }
+  }
+
+  /**
+   * Get stored suggestions for a user (placeholder for database integration)
+   */
+  private async getStoredSuggestions(userId: string): Promise<OptimizationSuggestion[]> {
+    // In a real implementation, this would fetch from database
+    // For now, return empty array to indicate no stored suggestions
+    return [];
+  }
+
+  /**
+   * Store suggestion completion (placeholder for database integration)
+   */
+  private async storeSuggestionCompletion(
+    userId: string, 
+    suggestion: OptimizationSuggestion, 
+    feedback?: string
+  ): Promise<void> {
+    // In a real implementation, this would store in database
+    // For now, we'll track it as an analytics event
+    await this.databaseService.trackLinkedInEvent(userId, 'suggestion_completion_stored', {
+      suggestionId: suggestion.id,
+      field: suggestion.field,
+      impact: suggestion.impact,
+      feedback
+    });
+  }
+
+  /**
+   * Generate AI content suggestions (placeholder for AI integration)
+   */
+  private async generateAIContentSuggestions(params: {
+    field: string;
+    currentContent?: string;
+    profile: LinkedInProfile;
+    targetAudience?: string;
+    industry?: string;
+    tone: string;
+    maxLength?: number;
+    includeKeywords: string[];
+  }): Promise<string[]> {
+    // This would integrate with OpenAI GPT-4 or similar AI service
+    // For now, return template-based suggestions
+    
+    const { field, currentContent, profile, tone, includeKeywords } = params;
+
+    const templateSuggestions: { [key: string]: string[] } = {
+      headline: [
+        `${profile.positions?.[0]?.title || 'Professional'} | Helping companies achieve their goals through innovative solutions`,
+        `Experienced ${profile.industry || 'Professional'} | Driving growth and efficiency | Let's connect!`,
+        `${profile.positions?.[0]?.title || 'Professional'} specializing in ${includeKeywords.join(', ') || 'industry expertise'}`
+      ],
+      summary: [
+        `As an experienced ${profile.positions?.[0]?.title || 'professional'}, I bring a unique blend of skills and expertise to drive results. My background in ${profile.industry || 'various industries'} has equipped me with the knowledge to tackle complex challenges and deliver innovative solutions.\n\nKey areas of expertise:\n• ${includeKeywords.slice(0, 3).join('\n• ') || 'Industry-specific skills'}\n\nI'm passionate about building meaningful professional relationships and contributing to organizational success. Let's connect to explore opportunities for collaboration!`,
+        
+        `Dedicated ${profile.positions?.[0]?.title || 'professional'} with a proven track record of success in ${profile.industry || 'business development'}. I specialize in ${includeKeywords.slice(0, 2).join(' and ') || 'strategic initiatives'} and am committed to driving growth and innovation.\n\nThroughout my career, I've demonstrated expertise in:\n• Strategic planning and execution\n• Team leadership and development\n• ${includeKeywords[0] || 'Industry expertise'}\n\nI'm always interested in connecting with like-minded professionals and exploring new opportunities. Feel free to reach out!`
+      ]
+    };
+
+    return templateSuggestions[field] || [
+      `Optimized ${field} content tailored for your profile`,
+      `Professional ${field} with industry keywords: ${includeKeywords.join(', ')}`,
+      `Enhanced ${field} designed to improve your LinkedIn visibility`
+    ];
+  }
+
+  /**
+   * Generate compliance notes for AI suggestions
+   */
+  private generateComplianceNotes(field: string, suggestions: string[]): string[] {
+    const baseNotes = [
+      'Ensure all content is truthful and accurate',
+      'Follow LinkedIn community guidelines',
+      'Avoid excessive self-promotion',
+      'Respect intellectual property rights'
+    ];
+
+    const fieldSpecificNotes: { [key: string]: string[] } = {
+      headline: [
+        'Do not use misleading job titles',
+        'Avoid excessive keywords or hashtags',
+        'Keep within LinkedIn character limits'
+      ],
+      summary: [
+        'Do not include external links or contact information',
+        'Avoid overly promotional language',
+        'Ensure content is professional and appropriate'
+      ]
+    };
+
+    return [...baseNotes, ...(fieldSpecificNotes[field] || [])];
+  }
+
+  /**
+   * Estimate impact of AI content improvement
+   */
+  private estimateAIContentImpact(field: string, currentContent?: string, suggestedContent?: string): number {
+    // Simple impact estimation based on field importance and content improvement
+    const fieldImpacts: { [key: string]: number } = {
+      headline: 12,
+      summary: 18,
+      experience: 15,
+      skills: 8,
+      education: 6
+    };
+
+    const baseImpact = fieldImpacts[field] || 5;
+    
+    // Reduce impact if current content exists and is substantial
+    if (currentContent && currentContent.length > 50) {
+      return Math.round(baseImpact * 0.3); // 30% of full impact for improvements
+    }
+
+    return baseImpact; // Full impact for missing content
+  }
+
+  /**
+   * Generate improvement rationale for AI suggestions
+   */
+  private generateImprovementRationale(field: string, currentContent?: string, suggestedContent?: string): string {
+    if (!currentContent) {
+      return `Adding optimized ${field} content will significantly improve your profile completeness and visibility on LinkedIn.`;
+    }
+
+    const improvements = [
+      'Enhanced keyword optimization for better search visibility',
+      'Improved professional tone and clarity',
+      'Better structure and readability',
+      'Industry-specific language and terminology',
+      'Call-to-action for networking and engagement'
+    ];
+
+    return `The suggested ${field} improvements focus on: ${improvements.slice(0, 3).join(', ')}. These changes will help increase your profile visibility and professional credibility.`;
+  }
+
   private async enhanceAnalyticsWithHistoricalData(
     userId: string,
     currentAnalytics: Partial<LinkedInAnalytics>

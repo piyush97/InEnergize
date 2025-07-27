@@ -4,7 +4,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import axios from 'axios';
 
-interface AuthenticatedRequest extends Request {
+export interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
     email: string;
@@ -182,6 +182,47 @@ export class AuthMiddleware {
 
       next();
     };
+  }
+
+  /**
+   * Extract user information from token (for testing)
+   */
+  extractUserFromToken(authHeader: string): { id: string; email: string; role: string; subscriptionLevel?: string } | null {
+    try {
+      const token = authHeader.startsWith('Bearer ') 
+        ? authHeader.substring(7) 
+        : authHeader;
+
+      if (!token) {
+        return null;
+      }
+
+      const decoded = jwt.verify(token, this.jwtSecret) as JWTPayload;
+      return {
+        id: decoded.userId,
+        email: decoded.email,
+        role: decoded.role,
+        subscriptionLevel: decoded.subscriptionLevel
+      };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Generate JWT token (for testing)
+   */
+  generateToken(user: { id: string; email: string; role: string; subscriptionLevel?: string }): string {
+    return jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+        subscriptionLevel: user.subscriptionLevel
+      },
+      this.jwtSecret,
+      { expiresIn: '24h' }
+    );
   }
 
   /**

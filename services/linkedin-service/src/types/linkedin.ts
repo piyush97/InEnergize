@@ -46,6 +46,19 @@ export interface LinkedInProfile {
   skills?: LinkedInSkill[];
   publicProfileUrl?: string;
   emailAddress?: string;
+  // Enhanced profile fields for better completeness scoring
+  certifications?: LinkedInCertification[];
+  languages?: LinkedInLanguage[];
+  projects?: LinkedInProject[];
+  honors?: LinkedInHonor[];
+  patents?: LinkedInPatent[];
+  publications?: LinkedInPublication[];
+  courses?: LinkedInCourse[];
+  volunteerExperience?: LinkedInVolunteerExperience[];
+  recommendations?: LinkedInRecommendation[];
+  connectionCount?: number;
+  followerCount?: number;
+  vanityName?: string; // Custom LinkedIn URL
 }
 
 export interface LinkedInPosition {
@@ -97,21 +110,6 @@ export interface LinkedInSkill {
   endorsementCount?: number;
 }
 
-export interface ProfileCompleteness {
-  score: number; // 0-100
-  breakdown: {
-    basicInfo: number;
-    headline: number;
-    summary: number;
-    experience: number;
-    education: number;
-    skills: number;
-    profilePicture: number;
-    connections: number;
-  };
-  suggestions: string[];
-  missingFields: string[];
-}
 
 export interface LinkedInAnalytics {
   profileViews: {
@@ -199,6 +197,79 @@ export interface RateLimitInfo {
   retryAfter?: number;
 }
 
+// Profile Optimization Suggestion Types
+export interface OptimizationSuggestion {
+  id: string;
+  field: string;
+  category: 'content' | 'engagement' | 'visibility' | 'networking';
+  priority: 'high' | 'medium' | 'low';
+  impact: number; // Expected impact on profile score (1-20 points)
+  difficulty: 'easy' | 'medium' | 'hard';
+  timeEstimate: string; // Human-readable time estimate
+  title: string;
+  description: string;
+  actionSteps: string[];
+  complianceNotes?: string[];
+  currentValue?: string;
+  suggestedValue?: string;
+  isCompleted: boolean;
+  completedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface OptimizationSuggestionRequest {
+  profileId?: string;
+  categories?: Array<'content' | 'engagement' | 'visibility' | 'networking'>;
+  priorities?: Array<'high' | 'medium' | 'low'>;
+  maxSuggestions?: number;
+  includeCompleted?: boolean;
+}
+
+export interface OptimizationSuggestionResponse {
+  suggestions: OptimizationSuggestion[];
+  totalCount: number;
+  completedCount: number;
+  potentialScoreIncrease: number;
+  estimatedTimeToComplete: string;
+  nextRecommendedAction?: OptimizationSuggestion;
+}
+
+export interface AISuggestionRequest {
+  field: string;
+  currentContent?: string;
+  targetAudience?: string;
+  industry?: string;
+  tone?: 'professional' | 'casual' | 'creative' | 'executive';
+  maxLength?: number;
+  includeKeywords?: string[];
+}
+
+export interface AISuggestionResponse {
+  suggestions: string[];
+  originalContent?: string;
+  improvementRationale: string;
+  keywordOptimization: string[];
+  complianceNotes: string[];
+  estimatedImpact: number;
+  generatedAt: Date;
+}
+
+export interface SuggestionCompletionRequest {
+  suggestionId: string;
+  implementedValue?: string;
+  feedback?: string;
+  partialCompletion?: boolean;
+}
+
+export interface SuggestionCompletionResponse {
+  suggestion: OptimizationSuggestion;
+  profileScoreChange: number;
+  newProfileScore: number;
+  nextRecommendations: OptimizationSuggestion[];
+  completedAt: Date;
+}
+
 export interface LinkedInAPIResponse<T> {
   data?: T;
   success: boolean;
@@ -206,6 +277,10 @@ export interface LinkedInAPIResponse<T> {
     message: string;
     code: string;
     details?: any;
+    userMessage?: string;
+    httpStatus?: number;
+    linkedinError?: string;
+    timestamp?: string;
   };
   rateLimitInfo?: RateLimitInfo;
 }
@@ -398,4 +473,166 @@ export class ComplianceError extends Error {
     super(message);
     this.name = 'ComplianceError';
   }
+}
+
+// Enhanced LinkedIn Profile Field Interfaces
+export interface LinkedInCertification {
+  id?: string;
+  name: string;
+  authority: string;
+  url?: string;
+  licenseNumber?: string;
+  startDate?: {
+    month?: number;
+    year: number;
+  };
+  endDate?: {
+    month?: number;
+    year: number;
+  };
+}
+
+export interface LinkedInLanguage {
+  id?: string;
+  name: string;
+  proficiency: 'ELEMENTARY' | 'LIMITED_WORKING' | 'PROFESSIONAL_WORKING' | 'FULL_PROFESSIONAL' | 'NATIVE_OR_BILINGUAL';
+}
+
+export interface LinkedInProject {
+  id?: string;
+  name: string;
+  description?: string;
+  url?: string;
+  startDate?: {
+    month?: number;
+    year: number;
+  };
+  endDate?: {
+    month?: number;
+    year: number;
+  };
+  members?: Array<{
+    name: string;
+    profileUrl?: string;
+  }>;
+}
+
+export interface LinkedInHonor {
+  id?: string;
+  name: string;
+  issuer?: string;
+  issueDate?: {
+    month?: number;
+    year: number;
+  };
+  description?: string;
+}
+
+export interface LinkedInPatent {
+  id?: string;
+  title: string;
+  summary?: string;
+  number?: string;
+  status?: string;
+  office?: {
+    name: string;
+  };
+  inventors?: Array<{
+    name: string;
+  }>;
+  date?: {
+    month?: number;
+    year: number;
+  };
+  url?: string;
+}
+
+export interface LinkedInPublication {
+  id?: string;
+  name: string;
+  publisher?: {
+    name: string;
+  };
+  publishedDate?: {
+    month?: number;
+    year: number;
+  };
+  description?: string;
+  url?: string;
+  authors?: Array<{
+    name: string;
+  }>;
+}
+
+export interface LinkedInCourse {
+  id?: string;
+  name: string;
+  number?: string;
+  description?: string;
+}
+
+export interface LinkedInVolunteerExperience {
+  id?: string;
+  role: string;
+  organization: {
+    name: string;
+  };
+  cause?: string;
+  description?: string;
+  startDate?: {
+    month?: number;
+    year: number;
+  };
+  endDate?: {
+    month?: number;
+    year: number;
+  };
+}
+
+export interface LinkedInRecommendation {
+  id?: string;
+  recommendationType: 'GIVEN' | 'RECEIVED';
+  recommender?: {
+    firstName: string;
+    lastName: string;
+    headline?: string;
+  };
+  recommendee?: {
+    firstName: string;
+    lastName: string;
+    headline?: string;
+  };
+  text: string;
+  createdAt: Date;
+}
+
+// Enhanced Profile Completeness Interface
+export interface ProfileCompleteness {
+  score: number; // 0-100
+  breakdown: {
+    basicInfo: number;
+    headline: number;
+    summary: number;
+    experience: number;
+    education: number;
+    skills: number;
+    profilePicture: number;
+    connections: number;
+    // Enhanced completeness categories
+    certifications: number;
+    languages: number;
+    projects: number;
+    volunteerWork: number;
+    recommendations: number;
+    customUrl: number;
+  };
+  suggestions: string[];
+  missingFields: string[];
+  priorityImprovements: Array<{
+    field: string;
+    impact: number;
+    difficulty: 'easy' | 'medium' | 'hard';
+    timeEstimate: string;
+    suggestion: string;
+  }>;
 }
