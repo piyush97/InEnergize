@@ -9,7 +9,7 @@ import {
   UpdateProfileRequest,
   UserSearchQuery,
   UsersResponse,
-  SubscriptionLevel,
+  SubscriptionTier,
   SubscriptionUsage,
   UserActivity,
   UserStats,
@@ -38,12 +38,9 @@ export class UserService {
           email: true,
           firstName: true,
           lastName: true,
-          subscriptionLevel: true,
-          mfaEnabled: true,
+          subscriptionTier: true,
           emailVerified: true,
-          linkedinConnected: true,
-          profileImageUrl: true,
-          lastLoginAt: true,
+          profileImage: true,
           createdAt: true,
           updatedAt: true,
         }
@@ -68,12 +65,9 @@ export class UserService {
           email: true,
           firstName: true,
           lastName: true,
-          subscriptionLevel: true,
-          mfaEnabled: true,
+          subscriptionTier: true,
           emailVerified: true,
-          linkedinConnected: true,
-          profileImageUrl: true,
-          lastLoginAt: true,
+          profileImage: true,
           createdAt: true,
           updatedAt: true,
         }
@@ -102,12 +96,9 @@ export class UserService {
           email: true,
           firstName: true,
           lastName: true,
-          subscriptionLevel: true,
-          mfaEnabled: true,
+          subscriptionTier: true,
           emailVerified: true,
-          linkedinConnected: true,
-          profileImageUrl: true,
-          lastLoginAt: true,
+          profileImage: true,
           createdAt: true,
           updatedAt: true,
         }
@@ -189,14 +180,13 @@ export class UserService {
       const {
         q,
         email,
-        subscriptionLevel,
+        subscriptionTier,
         linkedinConnected,
-        mfaEnabled,
+        // mfaEnabled removed
         emailVerified,
         createdAfter,
         createdBefore,
-        lastLoginAfter,
-        lastLoginBefore,
+        // lastLoginAfter, lastLoginBefore removed
         page = 1,
         limit = 20,
         sortBy = 'createdAt',
@@ -217,9 +207,8 @@ export class UserService {
       }
 
       if (email) where.email = { contains: email, mode: 'insensitive' };
-      if (subscriptionLevel) where.subscriptionLevel = subscriptionLevel;
+      if (subscriptionTier) where.subscriptionTier = subscriptionTier;
       if (linkedinConnected !== undefined) where.linkedinConnected = linkedinConnected;
-      if (mfaEnabled !== undefined) where.mfaEnabled = mfaEnabled;
       if (emailVerified !== undefined) where.emailVerified = emailVerified;
 
       if (createdAfter || createdBefore) {
@@ -228,11 +217,7 @@ export class UserService {
         if (createdBefore) where.createdAt.lte = createdBefore;
       }
 
-      if (lastLoginAfter || lastLoginBefore) {
-        where.lastLoginAt = {};
-        if (lastLoginAfter) where.lastLoginAt.gte = lastLoginAfter;
-        if (lastLoginBefore) where.lastLoginAt.lte = lastLoginBefore;
-      }
+
 
       // Get total count
       const total = await this.prisma.user.count({ where });
@@ -245,12 +230,9 @@ export class UserService {
           email: true,
           firstName: true,
           lastName: true,
-          subscriptionLevel: true,
-          mfaEnabled: true,
+          subscriptionTier: true,
           emailVerified: true,
-          linkedinConnected: true,
-          profileImageUrl: true,
-          lastLoginAt: true,
+          profileImage: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -286,7 +268,7 @@ export class UserService {
       const user = await this.getUserById(userId);
       if (!user) return null;
 
-      const limits = SUBSCRIPTION_LIMITS[user.subscriptionLevel];
+      const limits = SUBSCRIPTION_LIMITS[user.subscriptionTier];
 
       // In a real implementation, this would fetch actual usage from analytics tables
       // For now, we'll simulate usage data
@@ -304,7 +286,7 @@ export class UserService {
 
       return {
         userId,
-        subscriptionLevel: user.subscriptionLevel,
+        subscriptionTier: user.subscriptionTier,
         limits,
         usage,
         resetDate,
@@ -318,12 +300,12 @@ export class UserService {
   /**
    * Update subscription level
    */
-  async updateSubscriptionLevel(userId: string, newLevel: SubscriptionLevel): Promise<User | null> {
+  async updateSubscriptionTier(userId: string, newLevel: SubscriptionTier): Promise<User | null> {
     try {
       const updatedUser = await this.prisma.user.update({
         where: { id: userId },
         data: {
-          subscriptionLevel: newLevel,
+          subscriptionTier: newLevel,
           updatedAt: new Date(),
         },
         select: {
@@ -331,12 +313,9 @@ export class UserService {
           email: true,
           firstName: true,
           lastName: true,
-          subscriptionLevel: true,
-          mfaEnabled: true,
+          subscriptionTier: true,
           emailVerified: true,
-          linkedinConnected: true,
-          profileImageUrl: true,
-          lastLoginAt: true,
+          profileImage: true,
           createdAt: true,
           updatedAt: true,
         }
@@ -390,10 +369,10 @@ export class UserService {
           monthly: 8901,
         },
         subscriptionBreakdown: {
-          [SubscriptionLevel.FREE]: 7890,
-          [SubscriptionLevel.BASIC]: 1234,
-          [SubscriptionLevel.PRO]: 890,
-          [SubscriptionLevel.ENTERPRISE]: 220,
+          [SubscriptionTier.FREE]: 7890,
+          [SubscriptionTier.BASIC]: 1234,
+          [SubscriptionTier.PROFESSIONAL]: 890,
+          [SubscriptionTier.ENTERPRISE]: 220,
         },
         newUsers: {
           today: 23,
@@ -409,10 +388,10 @@ export class UserService {
         totalUsers: 0,
         activeUsers: { daily: 0, weekly: 0, monthly: 0 },
         subscriptionBreakdown: {
-          [SubscriptionLevel.FREE]: 0,
-          [SubscriptionLevel.BASIC]: 0,
-          [SubscriptionLevel.PRO]: 0,
-          [SubscriptionLevel.ENTERPRISE]: 0,
+          [SubscriptionTier.FREE]: 0,
+          [SubscriptionTier.BASIC]: 0,
+          [SubscriptionTier.PROFESSIONAL]: 0,
+          [SubscriptionTier.ENTERPRISE]: 0,
         },
         newUsers: { today: 0, thisWeek: 0, thisMonth: 0 },
         linkedinConnected: 0,
@@ -511,7 +490,7 @@ export class UserService {
     try {
       await this.prisma.user.update({
         where: { id: userId },
-        data: { lastLoginAt: new Date() },
+        data: { updatedAt: new Date() },
       });
     } catch (error) {
       console.error('Error updating last login:', error);
