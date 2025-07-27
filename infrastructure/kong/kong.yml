@@ -151,6 +151,39 @@ upstreams:
       - target: analytics-service:3004
         weight: 100
 
+  - name: ai-service
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        headers:
+          User-Agent: "Kong-Health-Check"
+        timeout: 15
+        concurrency: 2
+        healthy:
+          interval: 20
+          successes: 2
+          http_statuses: [200, 201]
+        unhealthy:
+          interval: 20
+          tcp_failures: 2
+          http_failures: 3
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
+      passive:
+        healthy:
+          successes: 3
+          http_statuses: [200, 201, 202, 204]
+        unhealthy:
+          tcp_failures: 2
+          http_failures: 3
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
+    targets:
+      - target: ai-service:3005
+        weight: 100
+
 # Define consumers for authentication
 consumers:
   - username: inergize-web-app
@@ -181,31 +214,10 @@ services:
     write_timeout: 30000
     read_timeout: 30000
     routes:
-      - name: auth-public-routes
+      - name: auth-routes
         paths:
-          - /api/v1/auth/login
-          - /api/v1/auth/register
-          - /api/v1/auth/forgot-password
-          - /api/v1/auth/reset-password
-          - /api/v1/auth/verify-email
-        methods:
-          - POST
-          - GET
-        strip_path: false
-        preserve_host: false
-      - name: auth-protected-routes
-        paths:
-          - /api/v1/auth/logout
-          - /api/v1/auth/refresh
-          - /api/v1/auth/profile
-          - /api/v1/auth/change-password
-          - /api/v1/auth/mfa
-        methods:
-          - POST
-          - GET
-          - PUT
-          - DELETE
-        strip_path: false
+          - /api/v1/auth
+        strip_path: true
         preserve_host: false
     plugins:
       # Security headers
@@ -484,6 +496,81 @@ services:
             headers:
               - "Content-Encoding:gzip"
               - "Cache-Control:public, max-age=60"
+      # CORS
+      - name: cors
+        config:
+          origins:
+            - "http://localhost:3000"
+            - "https://*.inergize.com"
+          methods:
+            - GET
+            - POST
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Requested-With
+          credentials: true
+          max_age: 3600
+
+  # AI Service - AI-powered content generation and optimization
+  - name: ai-service
+    host: ai-service
+    port: 3005
+    protocol: http
+    retries: 2
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    routes:
+      - name: ai-routes
+        paths:
+          - /api/v1/ai
+        strip_path: true
+        preserve_host: false
+    plugins:
+      # JWT Authentication
+      - name: jwt
+        config:
+          uri_param_names:
+            - jwt
+          cookie_names:
+            - jwt
+          header_names:
+            - authorization
+          claims_to_verify:
+            - exp
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
+      # Conservative rate limiting for AI operations
+      - name: rate-limiting
+        config:
+          minute: 20   # Conservative for AI usage
+          hour: 100
+          day: 500
+          policy: redis
+          redis_host: redis
+          redis_port: 6379
+          redis_password: inergize_redis_password
+          fault_tolerant: true
+          hide_client_headers: false
+      # Request size limiting for AI payloads
+      - name: request-size-limiting
+        config:
+          allowed_payload_size: 5  # 5MB max for AI requests
+          size_unit: megabytes
+          require_content_length: true
+      # Enhanced security headers
+      - name: response-transformer
+        config:
+          add:
+            headers:
+              - "X-Content-Type-Options:nosniff"
+              - "X-Frame-Options:DENY"
+              - "X-XSS-Protection:1; mode=block"
+              - "Cache-Control:no-cache, no-store, must-revalidate"
       # CORS
       - name: cors
         config:
