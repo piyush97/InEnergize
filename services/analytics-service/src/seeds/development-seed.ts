@@ -567,7 +567,7 @@ export class DevelopmentSeeder {
       'North America', 'Europe', 'Asia Pacific', 'Latin America', 
       'Middle East', 'Africa', 'Oceania'
     ];
-    return regions[Math.floor(Math.random() * regions.length)];
+    return regions[Math.floor(Math.random() * regions.length)] || 'North America';
   }
 
   /**
@@ -578,7 +578,7 @@ export class DevelopmentSeeder {
       'Technology', 'Finance', 'Healthcare', 'Education', 'Manufacturing',
       'Retail', 'Consulting', 'Media', 'Real Estate', 'Non-profit'
     ];
-    return industries[Math.floor(Math.random() * industries.length)];
+    return industries[Math.floor(Math.random() * industries.length)] || 'Technology';
   }
 
   /**
@@ -590,7 +590,7 @@ export class DevelopmentSeeder {
       'Leadership', 'Marketing', 'Sales', 'Design', 'Communication',
       'Strategy', 'Operations', 'Finance', 'Customer Service'
     ];
-    return skills[Math.floor(Math.random() * skills.length)];
+    return skills[Math.floor(Math.random() * skills.length)] || 'JavaScript';
   }
 
   /**

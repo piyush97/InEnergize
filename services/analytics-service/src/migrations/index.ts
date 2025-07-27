@@ -84,7 +84,7 @@ export class MigrationRunner {
 
     return files.map(filename => {
       const match = filename.match(/^(\d+)-(.+)\.sql$/);
-      if (!match) {
+      if (!match || !match[1] || !match[2]) {
         throw new Error(`Invalid migration filename format: ${filename}`);
       }
 
@@ -206,6 +206,11 @@ export class MigrationRunner {
       }
 
       const lastMigration = executedMigrations[executedMigrations.length - 1];
+      
+      if (!lastMigration) {
+        logger.warn('No migration found to rollback');
+        return;
+      }
 
       logger.warn('Rolling back migration', { 
         id: lastMigration.id, 
@@ -253,7 +258,7 @@ export class MigrationRunner {
 
       } catch (error) {
         await client.query('ROLLBACK');
-        logger.error('Rollback failed', { error, migration: lastMigration.name });
+        logger.error('Rollback failed', { error, migration: lastMigration?.name });
         throw error;
       } finally {
         client.release();

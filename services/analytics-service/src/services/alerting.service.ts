@@ -538,8 +538,8 @@ export class AlertingService {
     const match = period.match(/(\d+)\s*(day|hour|week|month)s?/i);
     if (!match) return 7; // Default to 7 days
 
-    const value = parseInt(match[1]);
-    const unit = match[2].toLowerCase();
+    const value = parseInt(match[1] || '7');
+    const unit = (match[2] || 'day').toLowerCase();
 
     switch (unit) {
       case 'hour': return Math.max(1, Math.round(value / 24));
