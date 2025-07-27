@@ -1,0 +1,126 @@
+// Auth Service Prisma Schema
+// Simplified schema focused on authentication and user management
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Management for Authentication
+model User {
+  id                String      @id @default(cuid())
+  email             String      @unique
+  firstName         String?
+  lastName          String?
+  profileImage      String?
+  emailVerified     DateTime?
+  hashedPassword    String?
+  isActive          Boolean     @default(true)
+  subscriptionTier  SubscriptionTier @default(FREE)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  
+  // OAuth connections
+  accounts          Account[]
+  sessions          Session[]
+  refreshTokens     RefreshToken[]
+  
+  // MFA Support
+  mfaEnabled        Boolean     @default(false)
+  mfaSecret         String?
+  mfaBackupCodes    String[]    @default([])
+  
+  // Password Reset
+  resetTokens       PasswordResetToken[]
+  
+  // Activity Logging
+  loginHistory      LoginHistory[]
+  
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  ipAddress    String?
+  userAgent    String?
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("password_reset_tokens")
+}
+
+model LoginHistory {
+  id         String   @id @default(cuid())
+  userId     String
+  ipAddress  String
+  userAgent  String?
+  success    Boolean
+  failReason String?
+  createdAt  DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("login_history")
+}
+
+// Enums
+enum SubscriptionTier {
+  FREE
+  BASIC
+  PROFESSIONAL
+  ENTERPRISE
+}

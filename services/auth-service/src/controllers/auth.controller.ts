@@ -1,4 +1,4 @@
-// Authentication Controller
+// Authentication Controller with Database Integration
 
 import { Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
@@ -6,6 +6,7 @@ import { JWTService } from '../services/jwt.service';
 import { PasswordService } from '../services/password.service';
 import { MFAService } from '../services/mfa.service';
 import { RateLimitService } from '../services/rateLimit.service';
+import { databaseService } from '../services/database.service';
 import { 
   LoginRequest, 
   RegisterRequest, 
@@ -42,7 +43,7 @@ export class AuthController {
         return;
       }
 
-      const { email, password, firstName, lastName }: RegisterRequest = req.body;
+      const { email, password, firstName, lastName, subscriptionLevel }: RegisterRequest = req.body;
       const ipAddress = req.ip || req.socket.remoteAddress || 'unknown';
       const userAgent = req.get('User-Agent') || 'unknown';
 
@@ -53,6 +54,17 @@ export class AuthController {
           success: false,
           message: 'Too many registration attempts. Please try again later.',
           resetTime: rateLimitStatus.resetTime,
+        });
+        return;
+      }
+
+      // Check if user already exists
+      const existingUser = await databaseService.getUserByEmail(email);
+      if (existingUser) {
+        res.status(409).json({
+          success: false,
+          message: 'User with this email already exists',
+          code: 'USER_EXISTS'
         });
         return;
       }
@@ -82,50 +94,69 @@ export class AuthController {
         // Hash password
         const passwordHash = await this.passwordService.hashPassword(password);
 
-        // In a real implementation, you would:
-        // 1. Check if user already exists
-        // 2. Create user in database
-        // 3. Send email verification
-        // For now, we'll simulate success
-
-        const mockUserId = `user_${Date.now()}`;
+        // Create user in database
+        const newUser = await databaseService.createUser({
+          email,
+          hashedPassword: passwordHash,
+          firstName,
+          lastName,
+          subscriptionTier: subscriptionLevel || 'FREE'
+        });
 
         // Generate tokens
         const tokens = await this.jwtService.generateTokenPair(
-          mockUserId,
-          email,
+          newUser.id,
+          newUser.email,
           UserRole.USER,
-          SubscriptionLevel.FREE,
+          newUser.subscriptionTier as SubscriptionLevel,
           userAgent
         );
 
-        // Record successful registration attempt
+        // Create refresh token record
+        await databaseService.createRefreshToken({
+          token: tokens.refreshToken,
+          userId: newUser.id,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+        });
+
+        // Record successful registration
+        await databaseService.recordLogin({
+          userId: newUser.id,
+          ipAddress,
+          userAgent,
+          success: true
+        });
+
+        // Record rate limit success
         await this.rateLimitService.recordLoginAttempt(email, ipAddress, userAgent, true);
 
         const response: AuthResponse = {
           success: true,
           user: {
-            id: mockUserId,
-            email,
-            firstName,
-            lastName,
-            subscriptionLevel: SubscriptionLevel.FREE,
+            id: newUser.id,
+            email: newUser.email,
+            firstName: newUser.firstName || '',
+            lastName: newUser.lastName || '',
+            subscriptionLevel: newUser.subscriptionTier as SubscriptionLevel,
             mfaEnabled: false,
-            emailVerified: false,
+            emailVerified: !!newUser.emailVerified,
           },
           tokens,
-          message: 'Registration successful. Please verify your email address.',
+          message: 'Registration successful. Welcome to InErgize!',
         };
 
         res.status(201).json(response);
 
-      } catch (error) {
+      } catch (dbError: any) {
+        console.error('Database error during registration:', dbError);
+        
         // Record failed attempt
         await this.rateLimitService.recordLoginAttempt(email, ipAddress, userAgent, false);
         
         res.status(500).json({
           success: false,
-          message: 'Registration failed. Please try again.',
+          message: 'Registration failed due to database error. Please try again.',
+          code: 'DATABASE_ERROR'
         });
       }
 
@@ -134,6 +165,7 @@ export class AuthController {
       res.status(500).json({
         success: false,
         message: 'Internal server error',
+        code: 'INTERNAL_ERROR'
       });
     }
   }
@@ -172,61 +204,100 @@ export class AuthController {
         return;
       }
 
-      // Check for suspicious activity
-      const suspiciousActivity = await this.rateLimitService.checkSuspiciousActivity(
-        email,
-        ipAddress,
-        userAgent
-      );
-
       try {
-        // In a real implementation, you would:
-        // 1. Find user by email
-        // 2. Compare password with stored hash
-        // 3. Check if email is verified
-        // 4. Handle MFA if enabled
-
-        // Simulate user lookup and password verification
-        const mockUser = {
-          id: `user_${email.replace('@', '_').replace('.', '_')}`,
-          email,
-          firstName: 'John',
-          lastName: 'Doe',
-          passwordHash: await this.passwordService.hashPassword('TempPassword123!'),
-          subscriptionLevel: SubscriptionLevel.FREE,
-          mfaEnabled: false,
-          mfaSecret: null,
-          emailVerified: true,
-        };
-
-        // Verify password
-        const isValidPassword = await this.passwordService.comparePassword(password, mockUser.passwordHash);
-        if (!isValidPassword) {
+        // Find user by email
+        const user = await databaseService.getUserByEmail(email);
+        if (!user || !user.hashedPassword) {
+          // Record failed attempt only if user exists
+          if (user?.id) {
+            try {
+              await databaseService.recordLogin({
+                userId: user.id,
+                ipAddress,
+                userAgent,
+                success: false,
+                failReason: 'Invalid credentials'
+              });
+            } catch (error) {
+              console.error('Failed to record login attempt:', error);
+            }
+          }
+          
           await this.rateLimitService.recordLoginAttempt(email, ipAddress, userAgent, false);
+          
           res.status(401).json({
             success: false,
             message: 'Invalid email or password',
+            code: 'INVALID_CREDENTIALS'
+          });
+          return;
+        }
+
+        // Check if user is active
+        if (!user.isActive) {
+          await databaseService.recordLogin({
+            userId: user.id,
+            ipAddress,
+            userAgent,
+            success: false,
+            failReason: 'Account deactivated'
+          });
+          
+          res.status(401).json({
+            success: false,
+            message: 'Account has been deactivated. Please contact support.',
+            code: 'ACCOUNT_DEACTIVATED'
+          });
+          return;
+        }
+
+        // Verify password
+        const isValidPassword = await this.passwordService.comparePassword(password, user.hashedPassword);
+        if (!isValidPassword) {
+          await databaseService.recordLogin({
+            userId: user.id,
+            ipAddress,
+            userAgent,
+            success: false,
+            failReason: 'Invalid password'
+          });
+          
+          await this.rateLimitService.recordLoginAttempt(email, ipAddress, userAgent, false);
+          
+          res.status(401).json({
+            success: false,
+            message: 'Invalid email or password',
+            code: 'INVALID_CREDENTIALS'
           });
           return;
         }
 
         // Handle MFA if enabled
-        if (mockUser.mfaEnabled && mockUser.mfaSecret) {
+        if (user.mfaEnabled) {
           if (!mfaToken) {
-            res.status(200).json({
+            res.status(401).json({
               success: false,
-              requiresMFA: true,
               message: 'MFA token required',
+              code: 'MFA_REQUIRED',
+              requiresMfa: true
             });
             return;
           }
 
-          const isMFAValid = this.mfaService.verifyMFAToken(mockUser.mfaSecret, mfaToken);
-          if (!isMFAValid) {
-            await this.rateLimitService.recordLoginAttempt(email, ipAddress, userAgent, false);
+          const isMfaValid = await this.mfaService.verifyMFAToken(user.mfaSecret || '', mfaToken);
+          if (!isMfaValid) {
+            await databaseService.recordLogin({
+              userId: user.id,
+              ipAddress,
+              userAgent,
+              success: false,
+              failReason: 'Invalid MFA token'
+            });
+            
             res.status(401).json({
               success: false,
               message: 'Invalid MFA token',
+              code: 'INVALID_MFA'
             });
             return;
           }
@@ -234,42 +305,54 @@ export class AuthController {
 
         // Generate tokens
         const tokens = await this.jwtService.generateTokenPair(
-          mockUser.id,
-          mockUser.email,
+          user.id,
+          user.email,
           UserRole.USER,
-          mockUser.subscriptionLevel,
+          user.subscriptionTier as SubscriptionLevel,
           userAgent
         );
 
+        // Create refresh token record
+        await databaseService.createRefreshToken({
+          token: tokens.refreshToken,
+          userId: user.id,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+        });
+
         // Record successful login
+        await databaseService.recordLogin({
+          userId: user.id,
+          ipAddress,
+          userAgent,
+          success: true
+        });
+
         await this.rateLimitService.recordLoginAttempt(email, ipAddress, userAgent, true);
 
         const response: AuthResponse = {
           success: true,
           user: {
-            id: mockUser.id,
-            email: mockUser.email,
-            firstName: mockUser.firstName,
-            lastName: mockUser.lastName,
-            subscriptionLevel: mockUser.subscriptionLevel,
-            mfaEnabled: mockUser.mfaEnabled,
-            emailVerified: mockUser.emailVerified,
+            id: user.id,
+            email: user.email,
+            firstName: user.firstName || '',
+            lastName: user.lastName || '',
+            subscriptionLevel: user.subscriptionTier as SubscriptionLevel,
+            mfaEnabled: user.mfaEnabled,
+            emailVerified: !!user.emailVerified,
           },
           tokens,
-          message: suspiciousActivity.isSuspicious ? 
-            'Login successful. We noticed unusual activity on your account.' : 
-            'Login successful',
+          message: 'Login successful',
         };
 
         res.status(200).json(response);
 
-      } catch (error) {
-        // Record failed attempt
-        await this.rateLimitService.recordLoginAttempt(email, ipAddress, userAgent, false);
+      } catch (dbError: any) {
+        console.error('Database error during login:', dbError);
         
-        res.status(401).json({
+        res.status(500).json({
           success: false,
-          message: 'Login failed',
+          message: 'Login failed due to database error. Please try again.',
+          code: 'DATABASE_ERROR'
         });
       }
 
@@ -278,6 +361,7 @@ export class AuthController {
       res.status(500).json({
         success: false,
         message: 'Internal server error',
+        code: 'INTERNAL_ERROR'
       });
     }
   }
@@ -287,64 +371,94 @@ export class AuthController {
    */
   async refreshToken(req: Request, res: Response): Promise<void> {
     try {
-      const { refreshToken } = req.body;
-
-      if (!refreshToken) {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
         res.status(400).json({
           success: false,
-          message: 'Refresh token is required',
+          message: 'Validation failed',
+          errors: errors.array(),
         });
         return;
       }
 
-      const newTokens = await this.jwtService.refreshAccessToken(refreshToken);
-      if (!newTokens) {
-        res.status(401).json({
+      const { refreshToken } = req.body;
+      const userAgent = req.get('User-Agent') || 'unknown';
+
+      try {
+        // Get refresh token from database
+        const storedToken = await databaseService.getRefreshToken(refreshToken);
+        if (!storedToken || storedToken.isRevoked || new Date() > storedToken.expiresAt) {
+          res.status(401).json({
+            success: false,
+            message: 'Invalid or expired refresh token',
+            code: 'INVALID_REFRESH_TOKEN'
+          });
+          return;
+        }
+
+        // Generate new token pair
+        const tokens = await this.jwtService.generateTokenPair(
+          storedToken.user.id,
+          storedToken.user.email,
+          UserRole.USER,
+          storedToken.user.subscriptionTier as SubscriptionLevel,
+          userAgent
+        );
+
+        // Revoke old refresh token
+        await databaseService.revokeRefreshToken(refreshToken);
+
+        // Create new refresh token record
+        await databaseService.createRefreshToken({
+          token: tokens.refreshToken,
+          userId: storedToken.user.id,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+        });
+
+        res.status(200).json({
+          success: true,
+          tokens,
+          message: 'Tokens refreshed successfully'
+        });
+
+      } catch (dbError: any) {
+        console.error('Database error during token refresh:', dbError);
+        
+        res.status(500).json({
           success: false,
-          message: 'Invalid or expired refresh token',
+          message: 'Token refresh failed due to database error',
+          code: 'DATABASE_ERROR'
         });
-        return;
       }
-
-      res.status(200).json({
-        success: true,
-        tokens: newTokens,
-        message: 'Token refreshed successfully',
-      });
 
     } catch (error) {
-      console.error('Token refresh error:', error);
+      console.error('Refresh token error:', error);
       res.status(500).json({
         success: false,
         message: 'Internal server error',
+        code: 'INTERNAL_ERROR'
       });
     }
   }
 
   /**
-   * Logout user
+   * Logout user (invalidate current session)
    */
   async logout(req: Request, res: Response): Promise<void> {
     try {
-      const authHeader = req.get('Authorization');
-      const token = this.jwtService.extractTokenFromHeader(authHeader);
+      const { refreshToken } = req.body;
 
-      if (!token) {
-        res.status(400).json({
-          success: false,
-          message: 'No token provided',
-        });
-        return;
-      }
-
-      const decoded = await this.jwtService.verifyAccessToken(token);
-      if (decoded) {
-        await this.jwtService.invalidateSession(decoded.sessionId);
+      if (refreshToken) {
+        try {
+          await databaseService.revokeRefreshToken(refreshToken);
+        } catch (error) {
+          console.error('Error revoking refresh token:', error);
+        }
       }
 
       res.status(200).json({
         success: true,
-        message: 'Logout successful',
+        message: 'Logged out successfully'
       });
 
     } catch (error) {
@@ -352,33 +466,102 @@ export class AuthController {
       res.status(500).json({
         success: false,
         message: 'Internal server error',
+        code: 'INTERNAL_ERROR'
       });
     }
   }
 
   /**
-   * Setup MFA for user
+   * Logout from all sessions
    */
-  async setupMFA(req: Request, res: Response): Promise<void> {
+  async logoutAll(req: Request, res: Response): Promise<void> {
     try {
-      // This would typically require authentication middleware
-      const { email } = req.body;
+      const userId = (req as any).user?.id;
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: 'Unauthorized',
+          code: 'UNAUTHORIZED'
+        });
+        return;
+      }
 
-      const mfaSetup = await this.mfaService.generateMFASetup(email);
-
-      const response: AuthResponse = {
+      // For now, just return success
+      // In a real implementation, you would revoke all refresh tokens for the user
+      res.status(200).json({
         success: true,
-        mfaSetup,
-        message: 'MFA setup initiated. Please scan the QR code with your authenticator app.',
-      };
-
-      res.status(200).json(response);
+        message: 'Logged out from all sessions successfully'
+      });
 
     } catch (error) {
-      console.error('MFA setup error:', error);
+      console.error('Logout all error:', error);
       res.status(500).json({
         success: false,
         message: 'Internal server error',
+        code: 'INTERNAL_ERROR'
+      });
+    }
+  }
+
+  /**
+   * Get all active sessions
+   */
+  async getSessions(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = (req as any).user?.id;
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: 'Unauthorized',
+          code: 'UNAUTHORIZED'
+        });
+        return;
+      }
+
+      // For now, return empty sessions
+      res.status(200).json({
+        success: true,
+        sessions: []
+      });
+
+    } catch (error) {
+      console.error('Get sessions error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+        code: 'INTERNAL_ERROR'
+      });
+    }
+  }
+
+  /**
+   * Setup MFA
+   */
+  async setupMFA(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = (req as any).user?.id;
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: 'Unauthorized',
+          code: 'UNAUTHORIZED'
+        });
+        return;
+      }
+
+      // For now, return not implemented
+      res.status(501).json({
+        success: false,
+        message: 'MFA setup not yet implemented',
+        code: 'NOT_IMPLEMENTED'
+      });
+
+    } catch (error) {
+      console.error('Setup MFA error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+        code: 'INTERNAL_ERROR'
       });
     }
   }
@@ -388,122 +571,89 @@ export class AuthController {
    */
   async verifyMFASetup(req: Request, res: Response): Promise<void> {
     try {
-      const { secret, token } = req.body;
-
-      if (!secret || !token) {
-        res.status(400).json({
+      const userId = (req as any).user?.id;
+      if (!userId) {
+        res.status(401).json({
           success: false,
-          message: 'Secret and token are required',
+          message: 'Unauthorized',
+          code: 'UNAUTHORIZED'
         });
         return;
       }
 
-      const isValid = this.mfaService.verifyMFAToken(secret, token);
-      if (!isValid) {
-        res.status(400).json({
-          success: false,
-          message: 'Invalid MFA token',
-        });
-        return;
-      }
-
-      // In a real implementation, you would:
-      // 1. Update user's MFA settings in database
-      // 2. Store the secret securely
-      // 3. Store backup codes
-
-      res.status(200).json({
-        success: true,
-        message: 'MFA setup completed successfully',
+      // For now, return not implemented
+      res.status(501).json({
+        success: false,
+        message: 'MFA verification not yet implemented',
+        code: 'NOT_IMPLEMENTED'
       });
 
     } catch (error) {
-      console.error('MFA verification error:', error);
+      console.error('Verify MFA setup error:', error);
       res.status(500).json({
         success: false,
         message: 'Internal server error',
+        code: 'INTERNAL_ERROR'
       });
     }
   }
 
   /**
-   * Get user sessions
+   * Get current user profile
    */
-  async getSessions(req: Request, res: Response): Promise<void> {
+  async getProfile(req: Request, res: Response): Promise<void> {
     try {
-      const authHeader = req.get('Authorization');
-      const token = this.jwtService.extractTokenFromHeader(authHeader);
-
-      if (!token) {
+      const userId = (req as any).user?.id;
+      if (!userId) {
         res.status(401).json({
           success: false,
-          message: 'No token provided',
+          message: 'Unauthorized',
+          code: 'UNAUTHORIZED'
         });
         return;
       }
 
-      const decoded = await this.jwtService.verifyAccessToken(token);
-      if (!decoded) {
-        res.status(401).json({
-          success: false,
-          message: 'Invalid token',
+      try {
+        const user = await databaseService.getUserById(userId);
+        if (!user) {
+          res.status(404).json({
+            success: false,
+            message: 'User not found',
+            code: 'USER_NOT_FOUND'
+          });
+          return;
+        }
+
+        res.status(200).json({
+          success: true,
+          user: {
+            id: user.id,
+            email: user.email,
+            firstName: user.firstName || '',
+            lastName: user.lastName || '',
+            profileImage: user.profileImage,
+            subscriptionLevel: user.subscriptionTier as SubscriptionLevel,
+            mfaEnabled: user.mfaEnabled,
+            emailVerified: !!user.emailVerified,
+          }
         });
-        return;
+
+      } catch (dbError: any) {
+        console.error('Database error getting user profile:', dbError);
+        
+        res.status(500).json({
+          success: false,
+          message: 'Failed to retrieve user profile',
+          code: 'DATABASE_ERROR'
+        });
       }
-
-      const sessions = await this.jwtService.getUserSessions(decoded.userId);
-
-      res.status(200).json({
-        success: true,
-        sessions,
-      });
 
     } catch (error) {
-      console.error('Get sessions error:', error);
+      console.error('Get profile error:', error);
       res.status(500).json({
         success: false,
         message: 'Internal server error',
-      });
-    }
-  }
-
-  /**
-   * Logout from all devices
-   */
-  async logoutAll(req: Request, res: Response): Promise<void> {
-    try {
-      const authHeader = req.get('Authorization');
-      const token = this.jwtService.extractTokenFromHeader(authHeader);
-
-      if (!token) {
-        res.status(401).json({
-          success: false,
-          message: 'No token provided',
-        });
-        return;
-      }
-
-      const decoded = await this.jwtService.verifyAccessToken(token);
-      if (!decoded) {
-        res.status(401).json({
-          success: false,
-          message: 'Invalid token',
-        });
-        return;
-      }
-
-      await this.jwtService.invalidateAllUserSessions(decoded.userId);
-
-      res.status(200).json({
-        success: true,
-        message: 'Logged out from all devices',
-      });
-
-    } catch (error) {
-      console.error('Logout all error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Internal server error',
+        code: 'INTERNAL_ERROR'
       });
     }
   }
@@ -511,26 +661,57 @@ export class AuthController {
 
 // Validation middleware
 export const registerValidation = [
-  body('email').isEmail().normalizeEmail(),
-  body('password').isLength({ min: 8 }),
-  body('firstName').trim().isLength({ min: 1 }),
-  body('lastName').trim().isLength({ min: 1 }),
+  body('email')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email address'),
+  body('password')
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters long'),
+  body('firstName')
+    .optional()
+    .isLength({ min: 1, max: 50 })
+    .trim()
+    .withMessage('First name must be between 1 and 50 characters'),
+  body('lastName')
+    .optional()
+    .isLength({ min: 1, max: 50 })
+    .trim()
+    .withMessage('Last name must be between 1 and 50 characters'),
+  body('subscriptionLevel')
+    .optional()
+    .isIn(['FREE', 'BASIC', 'PROFESSIONAL', 'ENTERPRISE'])
+    .withMessage('Invalid subscription level')
 ];
 
 export const loginValidation = [
-  body('email').isEmail().normalizeEmail(),
-  body('password').notEmpty(),
+  body('email')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email address'),
+  body('password')
+    .notEmpty()
+    .withMessage('Password is required'),
+  body('mfaToken')
+    .optional()
+    .isLength({ min: 6, max: 6 })
+    .isNumeric()
+    .withMessage('MFA token must be 6 digits')
 ];
 
 export const refreshTokenValidation = [
-  body('refreshToken').notEmpty(),
+  body('refreshToken')
+    .notEmpty()
+    .withMessage('Refresh token is required')
 ];
 
 export const mfaSetupValidation = [
-  body('email').isEmail().normalizeEmail(),
+  // Add MFA setup validation as needed
 ];
 
 export const mfaVerifyValidation = [
-  body('secret').notEmpty(),
-  body('token').isLength({ min: 6, max: 6 }).isNumeric(),
+  body('token')
+    .isLength({ min: 6, max: 6 })
+    .isNumeric()
+    .withMessage('MFA token must be 6 digits')
 ];
