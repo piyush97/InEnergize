@@ -20,11 +20,12 @@ export class LinkedInOAuthService {
       clientSecret: process.env.LINKEDIN_CLIENT_SECRET || '',
       redirectUri: process.env.LINKEDIN_REDIRECT_URI || 'http://localhost:3000/auth/linkedin/callback',
       scope: [
-        'r_liteprofile',
-        'r_emailaddress',
-        'r_basicprofile',
-        'rw_company_admin',
-        'w_member_social'
+        'r_liteprofile',      // Basic profile information
+        'r_emailaddress'      // Email address access
+        // Note: Removed deprecated and restricted scopes for compliance
+        // 'r_basicprofile' - deprecated
+        // 'rw_company_admin' - requires company approval  
+        // 'w_member_social' - requires LinkedIn approval
       ]
     };
 
@@ -33,8 +34,13 @@ export class LinkedInOAuthService {
     // Clean up expired states every hour
     setInterval(() => this.cleanupExpiredStates(), 60 * 60 * 1000);
 
-    if (!this.config.clientId || !this.config.clientSecret) {
-      throw new Error('LinkedIn OAuth configuration is incomplete');
+    if (!this.config.clientId || !this.config.clientSecret || 
+        this.config.clientId === 'your-linkedin-client-id' || 
+        this.config.clientSecret === 'your-linkedin-client-secret') {
+      console.warn('LinkedIn OAuth using mock configuration - suitable for development only');
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('LinkedIn OAuth configuration is incomplete for production');
+      }
     }
   }
 
