@@ -161,6 +161,27 @@ export class LinkedInOAuthService {
   }
 
   /**
+   * Validate state parameter
+   */
+  async validateState(state: string): Promise<boolean> {
+    const stateData = this.stateStore.get(state);
+    if (!stateData) {
+      return false;
+    }
+    
+    // Check if state is expired (10 minutes)
+    const now = new Date();
+    const isExpired = now.getTime() - stateData.createdAt.getTime() > 10 * 60 * 1000;
+    
+    if (isExpired) {
+      this.stateStore.delete(state);
+      return false;
+    }
+    
+    return true;
+  }
+
+  /**
    * Validate access token by making a test API call
    */
   async validateAccessToken(accessToken: string): Promise<boolean> {

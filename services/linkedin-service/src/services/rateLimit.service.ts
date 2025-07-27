@@ -97,6 +97,17 @@ export class LinkedInRateLimitService {
   }
 
   /**
+   * Check if request is allowed under rate limits (alias for backward compatibility)
+   */
+  async checkLimit(
+    userId: string,
+    endpoint: string,
+    operation: string = 'GET'
+  ): Promise<RateLimitInfo> {
+    return this.checkRateLimit(userId, endpoint, operation);
+  }
+
+  /**
    * Check if request is allowed under rate limits
    */
   async checkRateLimit(
@@ -266,6 +277,29 @@ export class LinkedInRateLimitService {
     }
 
     throw lastError || new Error('Max retry attempts exceeded');
+  }
+
+  /**
+   * Get all rate limits for a user (alias for getUsageStatistics)
+   */
+  async getAllLimits(userId: string): Promise<{
+    endpoints: Array<{
+      endpoint: string;
+      hourlyUsage: number;
+      dailyUsage: number;
+      hourlyLimit: number;
+      dailyLimit: number;
+      remainingHourly: number;
+      remainingDaily: number;
+    }>;
+    global: {
+      hourlyUsage: number;
+      dailyUsage: number;
+      hourlyLimit: number;
+      dailyLimit: number;
+    };
+  }> {
+    return this.getUsageStatistics(userId);
   }
 
   /**
@@ -512,6 +546,11 @@ export class LinkedInRateLimitService {
     recommendations: string[];
     riskFactors: string[];
     nextAllowedAction: Date;
+    safetyMetrics: {
+      velocityScore: number; // Rate of API usage increase
+      patternScore: number; // Consistency of usage patterns
+      complianceHistory: number; // Historical compliance track record
+    };
   }> {
     const usage = await this.getUsageStatistics(userId);
     const now = new Date();
@@ -543,12 +582,56 @@ export class LinkedInRateLimitService {
       riskFactors.push('High connection request usage');
       recommendations.push('Pause connection requests for today');
     }
+
+    // Enhanced safety metrics
+    const safetyMetrics = await this.calculateSafetyMetrics(userId, usage);
     
-    // Calculate next allowed action time
+    // Apply safety metric penalties
+    if (safetyMetrics.velocityScore < 70) {
+      score -= 15;
+      riskFactors.push('Rapid increase in API usage detected');
+      recommendations.push('Slow down API request rate to maintain compliance');
+    }
+    
+    if (safetyMetrics.patternScore < 60) {
+      score -= 10;
+      riskFactors.push('Unusual usage patterns detected');
+      recommendations.push('Review automation scripts for compliance');
+    }
+    
+    if (safetyMetrics.complianceHistory < 80) {
+      score -= 20;
+      riskFactors.push('Poor historical compliance record');
+      recommendations.push('Implement stricter rate limiting controls');
+    }
+
+    // Enhanced invitation/connection safety checks
+    const invitationUsage = usage.endpoints.find(e => e.endpoint.includes('invitation'));
+    if (invitationUsage) {
+      const invitationRate = invitationUsage.dailyUsage / invitationUsage.dailyLimit;
+      if (invitationRate > 0.5) {
+        score -= 15;
+        riskFactors.push('High connection invitation rate');
+        recommendations.push('Reduce connection requests to avoid LinkedIn restrictions');
+      }
+    }
+
+    // Time-based usage pattern analysis
+    const timeBasedRisk = await this.analyzeTimeBasedUsage(userId);
+    if (timeBasedRisk > 0.7) {
+      score -= 10;
+      riskFactors.push('Suspicious time-based usage patterns');
+      recommendations.push('Vary your LinkedIn activity timing to appear more natural');
+    }
+    
+    // Calculate next allowed action time with enhanced logic
     let nextAllowedAction = now;
-    if (score < 60) {
-      // If compliance score is low, suggest waiting
-      nextAllowedAction = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour
+    if (score < 50) {
+      nextAllowedAction = new Date(now.getTime() + 4 * 60 * 60 * 1000); // 4 hours for violations
+    } else if (score < 70) {
+      nextAllowedAction = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour for warnings
+    } else if (score < 85) {
+      nextAllowedAction = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes for caution
     }
     
     let status: 'COMPLIANT' | 'WARNING' | 'VIOLATION' = 'COMPLIANT';
@@ -560,8 +643,259 @@ export class LinkedInRateLimitService {
       score,
       recommendations,
       riskFactors,
-      nextAllowedAction
+      nextAllowedAction,
+      safetyMetrics
     };
+  }
+
+  /**
+   * Calculate enhanced safety metrics for compliance scoring
+   */
+  private async calculateSafetyMetrics(userId: string, usage: any): Promise<{
+    velocityScore: number;
+    patternScore: number;
+    complianceHistory: number;
+  }> {
+    try {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      
+      // Get historical usage data for velocity analysis
+      const todayKey = `linkedin_analytics:${userId}:${today}`;
+      const yesterdayKey = `linkedin_analytics:${userId}:${yesterday}`;
+      
+      const [todayData, yesterdayData] = await Promise.all([
+        this.redis.lrange(todayKey, 0, -1),
+        this.redis.lrange(yesterdayKey, 0, -1)
+      ]);
+
+      // Calculate velocity score (0-100, higher is better)
+      let velocityScore = 100;
+      const todayRequests = todayData.length;
+      const yesterdayRequests = yesterdayData.length;
+      
+      if (yesterdayRequests > 0) {
+        const velocityIncrease = (todayRequests - yesterdayRequests) / yesterdayRequests;
+        if (velocityIncrease > 1.0) { // More than 100% increase
+          velocityScore = Math.max(0, 100 - (velocityIncrease * 50));
+        }
+      }
+
+      // Calculate pattern score based on request timing distribution
+      let patternScore = 100;
+      const hourlyDistribution = new Array(24).fill(0);
+      
+      todayData.forEach(entry => {
+        try {
+          const data = JSON.parse(entry);
+          const hour = new Date(data.timestamp).getHours();
+          hourlyDistribution[hour]++;
+        } catch (e) {
+          // Skip invalid entries
+        }
+      });
+
+      // Check for unusual patterns (too concentrated in specific hours)
+      const activeHours = hourlyDistribution.filter(count => count > 0).length;
+      if (activeHours < 3 && todayRequests > 10) {
+        patternScore -= 30; // Penalize overly concentrated usage
+      }
+
+      // Check for burst patterns
+      const maxHourlyRequests = Math.max(...hourlyDistribution);
+      if (maxHourlyRequests > todayRequests * 0.5 && todayRequests > 5) {
+        patternScore -= 20; // Penalize burst patterns
+      }
+
+      // Calculate compliance history score
+      let complianceHistory = 100;
+      
+      // Check last 7 days for violations
+      const violationPattern = `linkedin_violations:${userId}:*`;
+      const violationKeys = await this.redis.keys(violationPattern);
+      
+      // Recent violations lower the score
+      const recentViolations = violationKeys.length;
+      complianceHistory = Math.max(0, 100 - (recentViolations * 15));
+
+      return {
+        velocityScore: Math.round(velocityScore),
+        patternScore: Math.round(patternScore),
+        complianceHistory: Math.round(complianceHistory)
+      };
+    } catch (error) {
+      console.error('Error calculating safety metrics:', error);
+      // Return safe defaults
+      return {
+        velocityScore: 80,
+        patternScore: 80,
+        complianceHistory: 90
+      };
+    }
+  }
+
+  /**
+   * Analyze time-based usage patterns for suspicious activity
+   */
+  private async analyzeTimeBasedUsage(userId: string): Promise<number> {
+    try {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const analyticsKey = `linkedin_analytics:${userId}:${today}`;
+      
+      const entries = await this.redis.lrange(analyticsKey, 0, -1);
+      if (entries.length < 5) {
+        return 0; // Not enough data for analysis
+      }
+
+      const timestamps = entries.map(entry => {
+        try {
+          const data = JSON.parse(entry);
+          return new Date(data.timestamp).getTime();
+        } catch (e) {
+          return null;
+        }
+      }).filter(Boolean) as number[];
+
+      if (timestamps.length < 3) {
+        return 0;
+      }
+
+      // Calculate intervals between requests
+      const intervals: number[] = [];
+      for (let i = 1; i < timestamps.length; i++) {
+        intervals.push(timestamps[i] - timestamps[i - 1]);
+      }
+
+      // Check for overly regular patterns (bot-like behavior)
+      const avgInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
+      const stdDev = Math.sqrt(
+        intervals.reduce((sum, interval) => sum + Math.pow(interval - avgInterval, 2), 0) / intervals.length
+      );
+
+      // If intervals are too regular (low standard deviation), it's suspicious
+      const coefficientOfVariation = stdDev / avgInterval;
+      
+      if (coefficientOfVariation < 0.2 && intervals.length > 10) {
+        return 0.8; // High risk - very regular patterns
+      } else if (coefficientOfVariation < 0.4 && intervals.length > 5) {
+        return 0.6; // Medium risk - somewhat regular
+      } else if (avgInterval < 30000) { // Less than 30 seconds average
+        return 0.7; // High risk - too frequent
+      }
+
+      return 0.3; // Low risk
+    } catch (error) {
+      console.error('Error analyzing time-based usage:', error);
+      return 0.2; // Default low risk
+    }
+  }
+
+  /**
+   * Record a compliance violation for tracking
+   */
+  async recordViolation(userId: string, violationType: string, details: any): Promise<void> {
+    try {
+      const now = new Date();
+      const violationKey = `linkedin_violations:${userId}:${now.toISOString().split('T')[0]}`;
+      
+      const violation = {
+        type: violationType,
+        timestamp: now.toISOString(),
+        details,
+        severity: details.severity || 'medium'
+      };
+
+      await this.redis.lpush(violationKey, JSON.stringify(violation));
+      await this.redis.expire(violationKey, 30 * 24 * 60 * 60); // Keep for 30 days
+      await this.redis.ltrim(violationKey, 0, 99); // Keep last 100 violations
+
+      // Also log to analytics for monitoring
+      console.warn(`LinkedIn compliance violation recorded for user ${userId}:`, violation);
+    } catch (error) {
+      console.error('Error recording violation:', error);
+    }
+  }
+
+  /**
+   * Get compliance report for monitoring dashboard
+   */
+  async getComplianceReport(): Promise<{
+    totalUsers: number;
+    complianceBreakdown: {
+      compliant: number;
+      warning: number;
+      violation: number;
+    };
+    topRiskFactors: Array<{ factor: string; count: number }>;
+    averageComplianceScore: number;
+  }> {
+    try {
+      // Get all user patterns
+      const userPattern = 'linkedin_rate_limit:*:global:*';
+      const keys = await this.redis.keys(userPattern);
+      
+      const userIds = new Set(
+        keys.map(key => key.split(':')[1])
+      );
+
+      const totalUsers = userIds.size;
+      let complianceBreakdown = { compliant: 0, warning: 0, violation: 0 };
+      let totalScore = 0;
+      const riskFactorCounts: { [key: string]: number } = {};
+
+      // Sample up to 100 users for performance
+      const sampleUsers = Array.from(userIds).slice(0, 100);
+
+      for (const userId of sampleUsers) {
+        try {
+          const compliance = await this.getComplianceStatus(userId);
+          totalScore += compliance.score;
+          
+          switch (compliance.status) {
+            case 'COMPLIANT':
+              complianceBreakdown.compliant++;
+              break;
+            case 'WARNING':
+              complianceBreakdown.warning++;
+              break;
+            case 'VIOLATION':
+              complianceBreakdown.violation++;
+              break;
+          }
+
+          // Count risk factors
+          compliance.riskFactors.forEach(factor => {
+            riskFactorCounts[factor] = (riskFactorCounts[factor] || 0) + 1;
+          });
+        } catch (error) {
+          // Skip users with errors
+        }
+      }
+
+      const averageComplianceScore = sampleUsers.length > 0 ? totalScore / sampleUsers.length : 100;
+      
+      const topRiskFactors = Object.entries(riskFactorCounts)
+        .map(([factor, count]) => ({ factor, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+
+      return {
+        totalUsers,
+        complianceBreakdown,
+        topRiskFactors,
+        averageComplianceScore: Math.round(averageComplianceScore)
+      };
+    } catch (error) {
+      console.error('Error generating compliance report:', error);
+      return {
+        totalUsers: 0,
+        complianceBreakdown: { compliant: 0, warning: 0, violation: 0 },
+        topRiskFactors: [],
+        averageComplianceScore: 100
+      };
+    }
   }
 
   async disconnect(): Promise<void> {

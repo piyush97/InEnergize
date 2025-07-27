@@ -53,13 +53,21 @@ router.get('/health', linkedinController.getHealthStatus.bind(linkedinController
 
 // OAuth endpoints
 router.post('/auth/initiate', oauthRateLimit, authMiddleware, linkedinController.initiateAuth.bind(linkedinController));
+router.get('/oauth/authorize', oauthRateLimit, authMiddleware, linkedinController.initiateAuth.bind(linkedinController));
 router.post('/auth/callback', oauthRateLimit, linkedinController.handleCallback.bind(linkedinController));
+router.post('/oauth/callback', oauthRateLimit, linkedinController.handleCallback.bind(linkedinController));
 router.delete('/auth/disconnect', authMiddleware, linkedinController.disconnectAccount.bind(linkedinController));
 
 // Profile management endpoints
 router.get('/profile', apiRateLimit, authMiddleware, linkedinController.getProfile.bind(linkedinController));
 router.post('/profile/sync', apiRateLimit, authMiddleware, linkedinController.syncProfile.bind(linkedinController));
 router.get('/profile/completeness', apiRateLimit, authMiddleware, linkedinController.getCompleteness.bind(linkedinController));
+router.get('/profile/benchmarks', apiRateLimit, authMiddleware, linkedinController.getBenchmarks.bind(linkedinController));
+
+// Profile optimization endpoints
+router.get('/profile/optimization-suggestions', apiRateLimit, authMiddleware, linkedinController.getOptimizationSuggestions.bind(linkedinController));
+router.post('/profile/optimization-suggestions/:id/complete', apiRateLimit, authMiddleware, linkedinController.completeOptimizationSuggestion.bind(linkedinController));
+router.post('/profile/ai-suggestions', apiRateLimit, authMiddleware, linkedinController.generateAISuggestions.bind(linkedinController));
 
 // Analytics endpoints
 router.get('/analytics', apiRateLimit, authMiddleware, linkedinController.getAnalytics.bind(linkedinController));
