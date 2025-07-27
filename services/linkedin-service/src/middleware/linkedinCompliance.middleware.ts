@@ -27,15 +27,16 @@ export class LinkedInComplianceMiddleware {
    * Pre-request compliance validation middleware
    */
   validateRequest() {
-    return async (req: LinkedInRequest, res: Response, next: NextFunction) => {
+    return async (req: LinkedInRequest, res: Response, next: NextFunction): Promise<void> => {
       try {
         // Extract user ID from various sources
         const userId = this.extractUserId(req);
         if (!userId) {
-          return res.status(401).json({
+          res.status(401).json({
             error: 'User authentication required',
             code: 'LINKEDIN_AUTH_REQUIRED'
           });
+          return;
         }
 
         // Determine LinkedIn endpoint being accessed
@@ -67,7 +68,8 @@ export class LinkedInComplianceMiddleware {
           // Add rate limiting headers
           this.addRateLimitHeaders(res, userId);
 
-          return res.status(statusCode).json(response);
+          res.status(statusCode).json(response);
+          return;
         }
 
         // Add delay for human-like behavior
@@ -86,10 +88,11 @@ export class LinkedInComplianceMiddleware {
         
         // In case of compliance service error, allow request but log
         if (process.env.LINKEDIN_SAFE_MODE === 'true') {
-          return res.status(503).json({
+          res.status(503).json({
             error: 'Compliance service unavailable',
             code: 'LINKEDIN_COMPLIANCE_ERROR'
           });
+          return;
         }
         
         next();
@@ -106,7 +109,8 @@ export class LinkedInComplianceMiddleware {
       const originalEnd = res.end;
       const startTime = Date.now();
 
-      res.end = function(...args: any[]) {
+      const originalEndBound = originalEnd.bind(res);
+      res.end = function(...args: any[]): Response {
         const responseTime = Date.now() - startTime;
         
         // Log request to compliance service
@@ -129,9 +133,9 @@ export class LinkedInComplianceMiddleware {
           });
         }
 
-        // Call original end method
-        originalEnd.apply(this, args);
-      };
+        // Call original end method with all arguments
+        return originalEndBound(...args);
+      } as any;
 
       next();
     };
@@ -294,15 +298,16 @@ export const linkedinErrorHandler = (
 /**
  * Compliance monitoring endpoint middleware
  */
-export const complianceMonitoring = (req: Request, res: Response, next: NextFunction) => {
+export const complianceMonitoring = (req: Request, res: Response, next: NextFunction): void => {
   // Only allow access to compliance endpoints for admin users
   const userRole = (req as any).user?.role;
   
   if (userRole !== 'admin' && userRole !== 'superadmin') {
-    return res.status(403).json({
+    res.status(403).json({
       error: 'Access denied - admin role required',
       code: 'LINKEDIN_COMPLIANCE_ACCESS_DENIED'
     });
+    return;
   }
 
   next();
