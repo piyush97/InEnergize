@@ -129,9 +129,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// API routes
-app.use('/auth', authRoutes);
-
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
@@ -179,6 +176,9 @@ app.get('/metrics', async (req, res) => {
     res.status(500).end(error);
   }
 });
+
+// API routes
+app.use('/', authRoutes);
 
 // 404 handler
 app.use((req, res) => {

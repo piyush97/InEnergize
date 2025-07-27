@@ -39,7 +39,13 @@ class RedisManager {
       });
 
       this.client.on('error', (error) => {
-        logger.error('Redis connection error', { error });
+        logger.error('Redis connection error', { 
+          error: error instanceof Error ? {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          } : error
+        });
       });
 
       this.client.on('close', () => {
@@ -51,7 +57,18 @@ class RedisManager {
       await this.client.ping();
       
     } catch (error) {
-      logger.error('Failed to connect to Redis', { error });
+      logger.error('Failed to connect to Redis', { 
+        error: error instanceof Error ? {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        } : error,
+        config: {
+          host: this.config.host,
+          port: this.config.port,
+          db: this.config.db
+        }
+      });
       throw error;
     }
   }

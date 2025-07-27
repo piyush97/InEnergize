@@ -1,4 +1,8 @@
+import dotenv from 'dotenv';
 import './module-alias';
+
+// Load environment variables
+dotenv.config();
 import { App } from './app';
 import { WebSocketService } from '@/services/websocket.service';
 import { logger } from '@/config/logger';

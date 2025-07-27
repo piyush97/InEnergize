@@ -44,7 +44,19 @@ class DatabaseManager {
         database: this.config.database
       });
     } catch (error) {
-      logger.error('Failed to connect to TimescaleDB', { error });
+      logger.error('Failed to connect to TimescaleDB', { 
+        error: error instanceof Error ? {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        } : error,
+        config: {
+          host: this.config.host,
+          port: this.config.port,
+          database: this.config.database,
+          user: this.config.user
+        }
+      });
       throw error;
     }
   }

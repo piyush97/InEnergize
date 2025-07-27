@@ -182,7 +182,13 @@ export class App {
       await redis.connect();
       logger.info('Database connections initialized');
     } catch (error) {
-      logger.error('Failed to initialize database connections', { error });
+      logger.error('Failed to initialize database connections', { 
+        error: error instanceof Error ? {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        } : error
+      });
       throw error;
     }
   }
