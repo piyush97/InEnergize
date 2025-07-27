@@ -103,7 +103,8 @@ services:
       - inergize-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -144,10 +145,10 @@ services:
     volumes:
       - ./infrastructure/kong/kong.test.yml:/kong/declarative/kong.test.yml:ro
     ports:
-      - "8000:8000"   # Kong proxy
-      - "8443:8443"   # Kong proxy SSL
-      - "8001:8001"   # Kong admin API
-      - "8444:8444"   # Kong admin API SSL
+      - "8000:8000" # Kong proxy
+      - "8443:8443" # Kong proxy SSL
+      - "8001:8001" # Kong admin API
+      - "8444:8444" # Kong admin API SSL
     networks:
       - inergize-network
     restart: unless-stopped
@@ -179,7 +180,15 @@ services:
       - redis
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3001/health",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -205,7 +214,15 @@ services:
       - redis
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3002/health",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -240,7 +257,15 @@ services:
       - user-service
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3003/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3003/health",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -268,7 +293,7 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=inergize_redis_password
       - REDIS_DB=1
-      - REDIS_KEY_PREFIX=analytics:
+      - REDIS_KEY_PREFIX=analytics
       # Authentication
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       - JWT_EXPIRES_IN=1h
@@ -296,8 +321,8 @@ services:
       - LINKEDIN_SERVICE_URL=http://linkedin-service:3003
     ports:
       - "3004:3004"
-      - "3007:3007"  # WebSocket port
-      - "9090:9090"  # Prometheus metrics
+      - "3007:3007" # WebSocket port
+      - "9090:9090" # Prometheus metrics
     networks:
       - inergize-network
     depends_on:
@@ -311,7 +336,15 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3004/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3004/health",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -358,7 +391,15 @@ services:
       - linkedin-service
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3005/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3005/health",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -386,7 +427,15 @@ services:
       - ai-service
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3000/api/health",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -15,6 +15,18 @@ const nextConfig = {
         source: '/api/users/:path*',
         destination: `${process.env.USER_SERVICE_URL || 'http://localhost:3002'}/:path*`,
       },
+      {
+        source: '/api/v1/linkedin/:path*',
+        destination: `${process.env.LINKEDIN_SERVICE_URL || 'http://localhost:3003'}/api/linkedin/:path*`,
+      },
+      {
+        source: '/api/v1/metrics/:path*',
+        destination: `${process.env.ANALYTICS_SERVICE_URL || 'http://localhost:3004'}/api/v1/metrics/:path*`,
+      },
+      {
+        source: '/api/v1/ws/:path*',
+        destination: `${process.env.ANALYTICS_SERVICE_URL || 'http://localhost:3004'}/api/v1/ws/:path*`,
+      },
     ];
   },
   
