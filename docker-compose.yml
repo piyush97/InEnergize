@@ -261,6 +261,47 @@ services:
       retries: 3
       start_period: 30s
 
+  # AI Service
+  ai-service:
+    build:
+      context: ./services/ai-service
+      dockerfile: Dockerfile
+    container_name: inergize-ai-service
+    environment:
+      - NODE_ENV=production
+      - PORT=3005
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=inergize_redis_password
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - USER_SERVICE_URL=http://user-service:3002
+      - LINKEDIN_SERVICE_URL=http://linkedin-service:3003
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-your_openai_api_key}
+      - OPENAI_MODEL=gpt-4
+      - OPENAI_MAX_TOKENS=4000
+      - OPENAI_TEMPERATURE=0.7
+      - RATE_LIMIT_PER_MINUTE=10
+      - RATE_LIMIT_PER_HOUR=100
+      - RATE_LIMIT_PER_DAY=500
+      - VALIDATE_TOKENS_WITH_AUTH_SERVICE=true
+    ports:
+      - "3005:3005"
+    networks:
+      - inergize-network
+    depends_on:
+      - redis
+      - auth-service
+      - user-service
+      - linkedin-service
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   # Web Application
   web-app:
     build:
@@ -280,6 +321,7 @@ services:
       - kong
       - linkedin-service
       - analytics-service
+      - ai-service
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]

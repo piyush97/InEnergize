@@ -1,0 +1,138 @@
+name: LinkedIn Service Tests
+
+on:
+  push:
+    branches: [ main, dev/*, feature/* ]
+    paths:
+      - 'services/linkedin-service/**'
+      - '.github/workflows/linkedin-service-tests.yml'
+  pull_request:
+    branches: [ main, dev/* ]
+    paths:
+      - 'services/linkedin-service/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      redis:
+        image: redis:6-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    strategy:
+      matrix:
+        node-version: [22.x]
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: services/linkedin-service/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: ./services/linkedin-service
+      run: npm ci --legacy-peer-deps
+    
+    - name: Run TypeScript compilation check
+      working-directory: ./services/linkedin-service
+      run: npm run type-check
+    
+    - name: Run linting
+      working-directory: ./services/linkedin-service
+      run: npm run lint
+    
+    - name: Run tests with coverage
+      working-directory: ./services/linkedin-service
+      run: npm run test:coverage:ci
+      env:
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+        NODE_ENV: test
+        JEST_JUNIT_OUTPUT_DIR: ./test-results
+        JEST_JUNIT_OUTPUT_NAME: results.xml
+    
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./services/linkedin-service/coverage/lcov.info
+        flags: linkedin-service
+        name: linkedin-service-coverage
+        fail_ci_if_error: false
+        
+    - name: Archive test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-${{ matrix.node-version }}
+        path: |
+          services/linkedin-service/coverage/
+          services/linkedin-service/test-results/
+        retention-days: 30
+    
+    - name: Comment PR with coverage
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const path = './services/linkedin-service/coverage/coverage-summary.json';
+          
+          if (!fs.existsSync(path)) {
+            console.log('Coverage summary not found');
+            return;
+          }
+          
+          const coverage = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const { total } = coverage;
+          
+          const comment = `## 📊 LinkedIn Service Test Coverage
+          
+          | Metric | Coverage | Status |
+          |--------|----------|--------|
+          | **Statements** | ${total.statements.pct}% | ${total.statements.pct >= 80 ? '✅' : '❌'} |
+          | **Branches** | ${total.branches.pct}% | ${total.branches.pct >= 80 ? '✅' : '❌'} |
+          | **Functions** | ${total.functions.pct}% | ${total.functions.pct >= 80 ? '✅' : '❌'} |
+          | **Lines** | ${total.lines.pct}% | ${total.lines.pct >= 80 ? '✅' : '❌'} |
+          
+          **Target**: 80% coverage for all metrics
+          
+          ${total.statements.pct >= 80 && total.branches.pct >= 80 && total.functions.pct >= 80 && total.lines.pct >= 80 
+            ? '🎉 Coverage targets met!' 
+            : '⚠️ Coverage below target - consider adding more tests'}
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build Docker image
+      working-directory: ./services/linkedin-service
+      run: |
+        docker build -t linkedin-service:${{ github.sha }} .
+        docker build -f Dockerfile.test -t linkedin-service-test:${{ github.sha }} .
+    
+    - name: Test Docker image
+      working-directory: ./services/linkedin-service
+      run: |
+        docker run --rm linkedin-service-test:${{ github.sha }} npm test
