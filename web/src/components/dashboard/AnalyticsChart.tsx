@@ -1,8 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { CalendarDays, TrendingUp } from 'lucide-react';
+import { CalendarDays, TrendingUp, Wifi, WifiOff, Play, Pause, RefreshCw } from 'lucide-react';
+import { useRealTimeMetrics } from './RealTimeMetricsProvider';
+import { cn } from '@/lib/utils';
 
 interface ChartDataPoint {
   date: string;
@@ -34,6 +38,14 @@ const AnalyticsChart: React.FC<AnalyticsChartProps> = ({ className }) => {
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState('7d');
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>(['profileViews', 'connections']);
+  const [liveData, setLiveData] = useState<Record<string, number>>({});
+  const [isLiveMode, setIsLiveMode] = useState(false);
+  
+  // WebSocket for real-time updates
+  const wsRef = useRef<WebSocket | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
+
+  const { metrics } = useRealTimeMetrics();
 
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
@@ -60,7 +72,7 @@ const AnalyticsChart: React.FC<AnalyticsChartProps> = ({ className }) => {
       const params = new URLSearchParams({
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
-        granularity: timeRange === '7d' ? 'day' : timeRange === '30d' ? 'day' : 'week'
+        granularity: timeRange === '7d' ? 'hour' : timeRange === '30d' ? 'day' : 'week'
       });
 
       const response = await fetch(`/api/v1/metrics/analytics?${params}`, {
@@ -84,21 +96,131 @@ const AnalyticsChart: React.FC<AnalyticsChartProps> = ({ className }) => {
     }
   }, [timeRange]);
 
+  // Initialize WebSocket for real-time chart updates
+  const initializeWebSocket = useCallback(() => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) return;
+
+      const wsUrl = `ws://localhost:3004/api/v1/ws/metrics?token=${encodeURIComponent(token)}`;
+      const ws = new WebSocket(wsUrl);
+      
+      ws.onopen = () => {
+        setWsConnected(true);
+        console.log('Chart WebSocket connected');
+        // Subscribe to real-time chart data
+        ws.send(JSON.stringify({
+          type: 'subscribe',
+          data: { 
+            metrics: selectedMetrics,
+            chartData: true,
+            frequency: 5000 // 5 second updates
+          }
+        }));
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          
+          if (message.type === 'chart_update') {
+            // Update live data for smooth chart animations
+            setLiveData(prev => ({
+              ...prev,
+              ...message.data
+            }));
+            
+            // Update analytics if in live mode
+            if (isLiveMode && message.data.chartPoints) {
+              setAnalytics(prev => prev ? {
+                ...prev,
+                chartData: {
+                  ...prev.chartData,
+                  ...message.data.chartPoints
+                }
+              } : null);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to parse chart WebSocket message:', error);
+        }
+      };
+      
+      ws.onclose = () => {
+        setWsConnected(false);
+        console.log('Chart WebSocket disconnected');
+        
+        // Attempt to reconnect after 5 seconds
+        setTimeout(() => {
+          if (wsRef.current?.readyState === WebSocket.CLOSED) {
+            initializeWebSocket();
+          }
+        }, 5000);
+      };
+      
+      ws.onerror = (error) => {
+        console.error('Chart WebSocket error:', error);
+        setWsConnected(false);
+      };
+      
+      wsRef.current = ws;
+    } catch (error) {
+      console.error('Failed to initialize chart WebSocket:', error);
+      setWsConnected(false);
+    }
+  }, [selectedMetrics, isLiveMode]);
+
   useEffect(() => {
     fetchAnalytics();
   }, [fetchAnalytics]);
+
+  useEffect(() => {
+    if (isLiveMode) {
+      initializeWebSocket();
+    } else if (wsRef.current) {
+      wsRef.current.close();
+    }
+    
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [isLiveMode, initializeWebSocket]);
+
+  // Update live data when real-time metrics change
+  useEffect(() => {
+    if (metrics && isLiveMode) {
+      setLiveData({
+        profileViews: metrics.profileViews,
+        connections: metrics.connections,
+        completenessScore: metrics.completenessScore,
+        engagementRate: metrics.engagementRate
+      });
+    }
+  }, [metrics, isLiveMode]);
 
   const formatChartData = () => {
     if (!analytics) return [];
 
     const dates = analytics.chartData.profileViews.map(item => item.date);
     
-    return dates.map(date => {
-      const dataPoint: Record<string, string | number> = { date: formatDate(date) };
+    return dates.map((date, index) => {
+      const dataPoint: Record<string, string | number> = { 
+        date: formatDate(date),
+        timestamp: new Date(date).getTime()
+      };
       
       if (selectedMetrics.includes('profileViews')) {
         const profileViewsData = analytics.chartData.profileViews.find(item => item.date === date);
-        dataPoint.profileViews = profileViewsData?.value || 0;
+        let value = profileViewsData?.value || 0;
+        
+        // Add live data for the most recent point if in live mode
+        if (isLiveMode && index === dates.length - 1 && liveData.profileViews) {
+          value = liveData.profileViews;
+        }
+        
+        dataPoint.profileViews = value;
       }
       
       if (selectedMetrics.includes('searchAppearances')) {
@@ -108,17 +230,38 @@ const AnalyticsChart: React.FC<AnalyticsChartProps> = ({ className }) => {
       
       if (selectedMetrics.includes('connections')) {
         const connectionsData = analytics.chartData.connections.find(item => item.date === date);
-        dataPoint.connections = connectionsData?.value || 0;
+        let value = connectionsData?.value || 0;
+        
+        // Add live data for the most recent point if in live mode
+        if (isLiveMode && index === dates.length - 1 && liveData.connections) {
+          value = liveData.connections;
+        }
+        
+        dataPoint.connections = value;
       }
       
       if (selectedMetrics.includes('completeness')) {
         const completenessData = analytics.chartData.completeness.find(item => item.date === date);
-        dataPoint.completeness = completenessData?.value || 0;
+        let value = completenessData?.value || 0;
+        
+        // Add live data for the most recent point if in live mode
+        if (isLiveMode && index === dates.length - 1 && liveData.completenessScore) {
+          value = liveData.completenessScore;
+        }
+        
+        dataPoint.completeness = value;
       }
       
       if (selectedMetrics.includes('engagement')) {
         const engagementData = analytics.chartData.engagement.find(item => item.date === date);
-        dataPoint.engagement = engagementData?.value || 0;
+        let value = engagementData?.value || 0;
+        
+        // Add live data for the most recent point if in live mode
+        if (isLiveMode && index === dates.length - 1 && liveData.engagementRate) {
+          value = liveData.engagementRate;
+        }
+        
+        dataPoint.engagement = value;
       }
       
       return dataPoint;
@@ -127,6 +270,13 @@ const AnalyticsChart: React.FC<AnalyticsChartProps> = ({ className }) => {
 
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
+    if (timeRange === '7d') {
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric',
+        hour: '2-digit'
+      });
+    }
     return date.toLocaleDateString('en-US', { 
       month: 'short', 
       day: 'numeric' 
@@ -163,6 +313,10 @@ const AnalyticsChart: React.FC<AnalyticsChartProps> = ({ className }) => {
         return [...prev, metric];
       }
     });
+  };
+
+  const toggleLiveMode = () => {
+    setIsLiveMode(prev => !prev);
   };
 
   const chartData = formatChartData();
@@ -208,9 +362,64 @@ const AnalyticsChart: React.FC<AnalyticsChartProps> = ({ className }) => {
           <CardTitle className="flex items-center space-x-2">
             <TrendingUp className="h-5 w-5" />
             <span>Analytics Trends</span>
+            {isLiveMode && (
+              <Badge variant="secondary" className="ml-2">
+                {wsConnected ? (
+                  <div className="flex items-center space-x-1">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                    <span>Live</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-1">
+                    <div className="w-2 h-2 bg-yellow-500 rounded-full" />
+                    <span>Connecting...</span>
+                  </div>
+                )}
+              </Badge>
+            )}
           </CardTitle>
           
           <div className="flex items-center space-x-4">
+            {/* Live Mode Toggle */}
+            <Button
+              variant={isLiveMode ? "default" : "outline"}
+              size="sm"
+              onClick={toggleLiveMode}
+              className="flex items-center space-x-1"
+            >
+              {isLiveMode ? (
+                <>
+                  <Pause className="h-3 w-3" />
+                  <span>Live</span>
+                </>
+              ) : (
+                <>
+                  <Play className="h-3 w-3" />
+                  <span>Static</span>
+                </>
+              )}
+            </Button>
+
+            {/* Refresh Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchAnalytics}
+              disabled={loading}
+            >
+              <RefreshCw className={cn('h-3 w-3 mr-1', loading && 'animate-spin')} />
+              Refresh
+            </Button>
+
+            {/* Connection Status */}
+            <div className="flex items-center space-x-1 text-xs text-gray-500">
+              {wsConnected ? (
+                <Wifi className="h-3 w-3 text-green-500" />
+              ) : (
+                <WifiOff className="h-3 w-3 text-gray-400" />
+              )}
+            </div>
+            
             <Select value={timeRange} onValueChange={setTimeRange}>
               <SelectTrigger className="w-32">
                 <CalendarDays className="h-4 w-4 mr-2" />
