@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm run dev:services\" \"npm run dev:web\"",
-    "dev:services": "docker-compose up -d postgres timescale redis elasticsearch && concurrently \"npm run dev:auth\" \"npm run dev:user\" \"npm run dev:linkedin\" \"npm run dev:analytics\"",
+    "dev:services": "docker-compose up -d postgres timescale redis elasticsearch && concurrently \"npm run dev:auth\" \"npm run dev:user\" \"npm run dev:linkedin\" \"npm run dev:analytics\" \"npm run dev:ai\"",
     "dev:web": "cd web && npm run dev",
     "dev:auth": "cd services/auth-service && npm run dev",
     "dev:user": "cd services/user-service && npm run dev",
@@ -123,6 +123,7 @@
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",
+    "axios": "^1.11.0",
     "prisma": "^6.0.0"
   },
   "prisma": {
