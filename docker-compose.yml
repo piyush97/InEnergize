@@ -23,7 +23,7 @@ services:
       retries: 3
       start_period: 30s
 
-  # TimescaleDB for analytics
+  # TimescaleDB for analytics with optimizations
   timescale:
     image: timescale/timescaledb:latest-pg14
     container_name: inergize-timescale
@@ -32,8 +32,23 @@ services:
       POSTGRES_USER: inergize_user
       POSTGRES_PASSWORD: inergize_password
       PGDATA: /var/lib/postgresql/data/pgdata
+      # TimescaleDB optimizations
+      POSTGRES_SHARED_PRELOAD_LIBRARIES: timescaledb
+      POSTGRES_MAX_CONNECTIONS: 200
+      POSTGRES_SHARED_BUFFERS: 256MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+      POSTGRES_MAINTENANCE_WORK_MEM: 64MB
+      POSTGRES_CHECKPOINT_COMPLETION_TARGET: 0.9
+      POSTGRES_WAL_BUFFERS: 16MB
+      POSTGRES_DEFAULT_STATISTICS_TARGET: 100
+      POSTGRES_RANDOM_PAGE_COST: 1.1
+      POSTGRES_EFFECTIVE_IO_CONCURRENCY: 200
+      # TimescaleDB specific settings
+      TIMESCALEDB_TELEMETRY: off
+      TIMESCALEDB_MAX_BACKGROUND_WORKERS: 8
     volumes:
       - timescale_data:/var/lib/postgresql/data
+      - ./services/analytics-service/src/migrations:/docker-entrypoint-initdb.d
     ports:
       - "5433:5432"
     networks:
@@ -44,7 +59,13 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
 
   # Redis Cache
   redis:
@@ -225,7 +246,7 @@ services:
       retries: 3
       start_period: 30s
 
-  # Analytics Service
+  # Enhanced Analytics Service with TimescaleDB
   analytics-service:
     build:
       context: ./services/analytics-service
@@ -234,32 +255,73 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3004
-      - DATABASE_URL=postgresql://inergize_user:inergize_password@timescale:5432/inergize_analytics
+      # TimescaleDB connection
+      - TIMESCALE_HOST=timescale
+      - TIMESCALE_PORT=5432
+      - TIMESCALE_USER=inergize_user
+      - TIMESCALE_PASSWORD=inergize_password
+      - TIMESCALE_DATABASE=inergize_analytics
+      - TIMESCALE_MAX_CONNECTIONS=20
+      - TIMESCALE_CONNECTION_TIMEOUT=60000
+      # Redis configuration
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=inergize_redis_password
+      - REDIS_DB=1
+      - REDIS_KEY_PREFIX=analytics:
+      # Authentication
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - JWT_EXPIRES_IN=1h
+      # WebSocket configuration
       - WS_ENABLED=true
       - WS_PORT=3007
+      - WS_HEARTBEAT_INTERVAL=30000
+      # Rate limiting
+      - RATE_LIMIT_WINDOW_MS=900000
+      - RATE_LIMIT_MAX_REQUESTS=100
+      # Logging
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      # Metrics collection
+      - METRICS_ENABLED=true
+      - METRICS_PORT=9090
+      - METRICS_PATH=/metrics
+      # Data retention
+      - DATA_RETENTION_DAYS=90
+      - AGGREGATION_INTERVAL_MINUTES=5
+      - CLEANUP_INTERVAL_HOURS=24
+      # External services
       - AUTH_SERVICE_URL=http://auth-service:3001
       - USER_SERVICE_URL=http://user-service:3002
+      - LINKEDIN_SERVICE_URL=http://linkedin-service:3003
     ports:
       - "3004:3004"
       - "3007:3007"  # WebSocket port
+      - "9090:9090"  # Prometheus metrics
     networks:
       - inergize-network
     depends_on:
-      - timescale
-      - redis
-      - auth-service
-      - user-service
+      timescale:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3004/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
 
   # AI Service
   ai-service:
