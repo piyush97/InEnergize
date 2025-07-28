@@ -278,15 +278,70 @@ export interface IndustryTrend {
 // =====================================================
 
 export interface BannerGenerationRequest {
-  linkedinProfile: LinkedInProfile;
-  theme?: string;
-  industry?: string;
-  personalBrand?: string;
-  colorScheme?: string[];
-  includeText?: boolean;
-  style?: 'professional' | 'creative' | 'minimalist' | 'bold';
+  industry: string;
+  style?: 'natural' | 'vivid';
+  branding?: BrandingOptions;
+  textElements?: string[];
+  colorScheme?: string;
+  additionalContext?: string;
+  userId?: string;
 }
 
+export interface BrandingOptions {
+  companyName?: string;
+  role?: string;
+  tagline?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  logoUrl?: string;
+  websiteUrl?: string;
+}
+
+export interface BannerGenerationResult {
+  id: string;
+  imageUrl: string;
+  imageData: string; // base64 encoded
+  dimensions: {
+    width: number;
+    height: number;
+  };
+  format: string;
+  fileSize: number;
+  prompt: string;
+  altTexts: string[];
+  metadata: BannerMetadata;
+  usage: OpenAIUsage;
+  isLinkedInCompliant: boolean;
+  qualityScore: number;
+}
+
+export interface BannerMetadata {
+  industry: string;
+  style?: string;
+  generatedAt: Date;
+  dalleModel: string;
+  version: string;
+}
+
+export interface BannerTemplate {
+  id: string;
+  name: string;
+  description: string;
+  industry: string;
+  colorSchemes: string[];
+  designElements: string[];
+  keywords: string[];
+  professionalTone: string;
+}
+
+export interface IndustryTemplate {
+  keywords: string[];
+  colorSchemes: string[];
+  designElements: string[];
+  professionalTone: string;
+}
+
+// Legacy types for backward compatibility
 export interface BannerGenerationResponse {
   banners: GeneratedBanner[];
   designGuidelines: DesignGuidelines;

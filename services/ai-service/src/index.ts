@@ -6,6 +6,9 @@ import rateLimit from 'express-rate-limit';
 import { collectDefaultMetrics, register } from 'prom-client';
 import winston from 'winston';
 import aiRoutes from './routes/ai.routes';
+import { createBannerRoutes } from './routes/banner.routes';
+import { OpenAIService } from './services/openai.service';
+import { AIServiceConfig } from './types';
 
 // Initialize metrics collection
 collectDefaultMetrics();
@@ -147,8 +150,25 @@ app.get('/', (req, res) => {
   });
 });
 
+// Initialize services
+const aiConfig: AIServiceConfig = {
+  openaiApiKey: process.env.OPENAI_API_KEY || '',
+  maxTokens: parseInt(process.env.MAX_TOKENS || '2000'),
+  temperature: parseFloat(process.env.TEMPERATURE || '0.7'),
+  model: process.env.OPENAI_MODEL || 'gpt-4',
+  rateLimits: {
+    requestsPerMinute: parseInt(process.env.REQUESTS_PER_MINUTE || '10'),
+    requestsPerHour: parseInt(process.env.REQUESTS_PER_HOUR || '100'),
+    requestsPerDay: parseInt(process.env.REQUESTS_PER_DAY || '1000')
+  }
+};
+
+const openaiService = new OpenAIService(aiConfig);
+const bannerRoutes = createBannerRoutes(openaiService, aiConfig);
+
 // API routes
-app.use('/', aiRoutes);
+app.use('/api/v1/ai', aiRoutes);
+app.use('/api/v1/banner', bannerRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

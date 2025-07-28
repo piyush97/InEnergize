@@ -35,9 +35,11 @@ export class LinkedInOAuthService {
     setInterval(() => this.cleanupExpiredStates(), 60 * 60 * 1000);
 
     if (!this.config.clientId || !this.config.clientSecret || 
-        this.config.clientId === 'your-linkedin-client-id' || 
-        this.config.clientSecret === 'your-linkedin-client-secret') {
+        this.config.clientId === 'your_linkedin_client_id' || 
+        this.config.clientSecret === 'your_linkedin_client_secret' ||
+        this.config.clientId.startsWith('dev_')) {
       console.warn('LinkedIn OAuth using mock configuration - suitable for development only');
+      console.log('Current NODE_ENV:', process.env.NODE_ENV);
       if (process.env.NODE_ENV === 'production') {
         throw new Error('LinkedIn OAuth configuration is incomplete for production');
       }
