@@ -19,15 +19,11 @@ import {
   Circle,
   AlertCircle,
   Star,
-  ArrowRight,
   RefreshCw,
   Filter,
   Eye,
   ThumbsUp,
-  MessageSquare,
-  Award,
   Users,
-  Briefcase,
   FileText,
   ExternalLink
 } from 'lucide-react';
@@ -172,7 +168,7 @@ const ProfileOptimizationSuggestions: React.FC<ProfileOptimizationSuggestionsPro
       });
 
       if (response.ok) {
-        const result = await response.json();
+        await response.json();
         // Refresh data to show new AI suggestions
         fetchOptimizationData();
       }

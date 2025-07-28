@@ -70,7 +70,7 @@ const PreferencesStep: React.FC<PreferencesStepProps> = ({
 
       toast.success('Preferences saved successfully!')
       onComplete()
-    } catch (_error) {
+    } catch {
       toast.error('Failed to save preferences. Please try again.')
     } finally {
       setIsSubmitting(false)

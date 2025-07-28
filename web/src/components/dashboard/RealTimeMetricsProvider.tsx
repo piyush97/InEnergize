@@ -4,7 +4,7 @@
 
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, ReactNode, useCallback } from 'react';
 
 // Types for real-time metrics data
 interface RealTimeMetrics {
@@ -24,7 +24,7 @@ interface RealTimeMetrics {
 
 interface RealTimeUpdate {
   type: 'metrics_update' | 'compliance_alert' | 'rate_limit_warning' | 'connection_status';
-  data: any;
+  data: unknown;
   timestamp: string;
 }
 
@@ -35,7 +35,7 @@ interface WebSocketConnection {
   reconnectAttempts: number;
   metrics: RealTimeMetrics | null;
   subscribe: (callback: (update: RealTimeUpdate) => void) => () => void;
-  sendMessage: (message: any) => void;
+  sendMessage: (message: unknown) => void;
 }
 
 interface RealTimeMetricsProviderProps {
@@ -107,7 +107,7 @@ export const RealTimeMetricsProvider: React.FC<RealTimeMetricsProviderProps> = (
     }
   };
 
-  const initializeWebSocket = async () => {
+  const initializeWebSocket = useCallback(async () => {
     try {
       const token = localStorage.getItem('authToken');
       if (!token) {
@@ -207,7 +207,7 @@ export const RealTimeMetricsProvider: React.FC<RealTimeMetricsProviderProps> = (
         startPolling();
       }
     }
-  };
+  }, [enableFallbackPolling, maxReconnectAttempts, reconnectAttempts]);
 
   const createMockWebSocket = () => {
     // Mock WebSocket for development
@@ -244,10 +244,10 @@ export const RealTimeMetricsProvider: React.FC<RealTimeMetricsProviderProps> = (
     return () => clearInterval(mockInterval);
   };
 
-  const handleWebSocketMessage = (data: any) => {
+  const handleWebSocketMessage = (data: { type: string; payload?: unknown }) => {
     switch (data.type) {
       case 'metrics_update':
-        setMetrics(data.payload);
+        setMetrics(data.payload as RealTimeMetrics);
         notifySubscribers({
           type: 'metrics_update',
           data: data.payload,
@@ -297,7 +297,7 @@ export const RealTimeMetricsProvider: React.FC<RealTimeMetricsProviderProps> = (
     }, delay);
   };
 
-  const startPolling = () => {
+  const startPolling = useCallback(() => {
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
     }
@@ -309,7 +309,7 @@ export const RealTimeMetricsProvider: React.FC<RealTimeMetricsProviderProps> = (
     pollingIntervalRef.current = setInterval(() => {
       fetchMetricsViaHTTP();
     }, pollingInterval);
-  };
+  }, [pollingInterval]);
 
   const fetchMetricsViaHTTP = async () => {
     try {
@@ -356,7 +356,7 @@ export const RealTimeMetricsProvider: React.FC<RealTimeMetricsProviderProps> = (
     };
   };
 
-  const sendMessage = (message: any) => {
+  const sendMessage = (message: unknown) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
     }

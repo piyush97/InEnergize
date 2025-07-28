@@ -3,7 +3,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -80,7 +80,7 @@ const ProfileOptimizationDashboard: React.FC<ProfileOptimizationDashboardProps> 
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
 
   // Mock data for development
-  const mockMetrics: OptimizationMetrics = {
+  const mockMetrics: OptimizationMetrics = useMemo(() => ({
     totalSuggestions: 12,
     completedSuggestions: 4,
     highPrioritySuggestions: 3,
@@ -88,9 +88,9 @@ const ProfileOptimizationDashboard: React.FC<ProfileOptimizationDashboardProps> 
     profileScore: 72,
     improvementPotential: 28,
     lastUpdated: new Date()
-  };
+  }), []);
 
-  const mockTasks: OptimizationTask[] = [
+  const mockTasks: OptimizationTask[] = useMemo(() => [
     {
       id: 'headline-1',
       title: 'Optimize Professional Headline',
@@ -173,13 +173,13 @@ const ProfileOptimizationDashboard: React.FC<ProfileOptimizationDashboardProps> 
       ],
       examples: []
     }
-  ];
+  ], []);
 
   useEffect(() => {
     fetchOptimizationData();
   }, []);
 
-  const fetchOptimizationData = async () => {
+  const fetchOptimizationData = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -199,7 +199,7 @@ const ProfileOptimizationDashboard: React.FC<ProfileOptimizationDashboardProps> 
     } finally {
       setLoading(false);
     }
-  };
+  }, [mockMetrics, mockTasks]);
 
   const generateAISuggestion = async (task: OptimizationTask) => {
     setAiGenerating(true);

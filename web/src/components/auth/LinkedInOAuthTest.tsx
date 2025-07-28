@@ -3,7 +3,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,9 +15,6 @@ import {
   AlertCircle, 
   Loader2,
   PlayCircle,
-  Settings,
-  Eye,
-  RefreshCw,
   ExternalLink,
   Clock,
   Shield
@@ -30,7 +27,7 @@ interface OAuthStep {
   description: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   duration?: number;
-  result?: any;
+  result?: unknown;
   error?: string;
 }
 
@@ -43,7 +40,7 @@ const LinkedInOAuthTest: React.FC<LinkedInOAuthTestProps> = ({ className }) => {
   const [testing, setTesting] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [authUrl, setAuthUrl] = useState<string | null>(null);
-  const [connectionData, setConnectionData] = useState<any>(null);
+  const [connectionData, setConnectionData] = useState<unknown>(null);
 
   const [steps, setSteps] = useState<OAuthStep[]>([
     {
@@ -439,7 +436,7 @@ const LinkedInOAuthTest: React.FC<LinkedInOAuthTestProps> = ({ className }) => {
                       </Alert>
                     )}
                     
-                    {step.result && step.status === 'completed' && (
+                    {step.result !== undefined && step.status === 'completed' && (
                       <details className="mt-2">
                         <summary className="text-xs text-blue-600 cursor-pointer">
                           View Result
@@ -502,7 +499,7 @@ const LinkedInOAuthTest: React.FC<LinkedInOAuthTestProps> = ({ className }) => {
                 : ` ${completedSteps}/${steps.length} steps completed.`
               }
             </p>
-            {connectionData && (
+            {connectionData !== null && (
               <details className="mt-2">
                 <summary className="text-sm text-green-700 cursor-pointer">
                   View Connection Data
