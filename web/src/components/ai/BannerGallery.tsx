@@ -1,19 +1,15 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import axios from 'axios'
 import { 
   PhotoIcon,
   MagnifyingGlassIcon,
   ArrowDownTrayIcon,
   TrashIcon,
-  EyeIcon,
   ShareIcon,
-  StarIcon,
-  FilterIcon,
-  CalendarIcon
+  FilterIcon
 } from '@heroicons/react/24/outline'
-import { StarIcon as StarSolidIcon } from '@heroicons/react/24/solid'
 import { toast } from 'react-hot-toast'
 import { format } from 'date-fns'
 
@@ -34,7 +30,11 @@ interface Banner {
   isPublic: boolean
   tags: string[]
   generationCost: number
-  branding?: any
+  branding?: {
+    logo?: string;
+    colors?: string[];
+    fonts?: string[];
+  }
   textElements: string[]
   altTexts: string[]
   createdAt: string
@@ -75,7 +75,7 @@ export const BannerGallery: React.FC = () => {
 
   useEffect(() => {
     applyFilters()
-  }, [banners, searchQuery, filters])
+  }, [banners, searchQuery, filters, applyFilters])
 
   const loadBanners = async () => {
     try {
@@ -95,7 +95,7 @@ export const BannerGallery: React.FC = () => {
     }
   }
 
-  const applyFilters = () => {
+  const applyFilters = useCallback(() => {
     let filtered = banners
 
     // Search filter
@@ -146,7 +146,7 @@ export const BannerGallery: React.FC = () => {
 
     setFilteredBanners(filtered)
     setCurrentPage(1)
-  }
+  }, [banners, searchQuery, filters])
 
   const downloadBanner = async (banner: Banner) => {
     try {
@@ -167,7 +167,7 @@ export const BannerGallery: React.FC = () => {
       )
       
       toast.success('Banner downloaded!')
-    } catch (error) {
+    } catch (_error) {
       toast.error('Failed to download banner')
     }
   }
@@ -184,7 +184,7 @@ export const BannerGallery: React.FC = () => {
         return newSet
       })
       toast.success('Banner deleted!')
-    } catch (error) {
+    } catch (_error) {
       toast.error('Failed to delete banner')
     }
   }
@@ -214,7 +214,7 @@ export const BannerGallery: React.FC = () => {
       setBanners(prev => prev.filter(b => !selectedBanners.has(b.id)))
       setSelectedBanners(new Set())
       toast.success(`Deleted ${selectedBanners.size} banners!`)
-    } catch (error) {
+    } catch (_error) {
       toast.error('Failed to delete some banners')
     }
   }
@@ -380,7 +380,7 @@ export const BannerGallery: React.FC = () => {
               <label className="block text-xs font-medium text-gray-700 mb-1">Sort By</label>
               <select
                 value={filters.sortBy}
-                onChange={(e) => setFilters(prev => ({ ...prev, sortBy: e.target.value as any }))}
+                onChange={(e) => setFilters(prev => ({ ...prev, sortBy: e.target.value as 'newest' | 'oldest' | 'quality' | 'downloads' }))}
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
               >
                 <option value="newest">Newest First</option>

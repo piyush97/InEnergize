@@ -33,7 +33,6 @@ import {
   RefreshCw,
   Image as ImageIcon,
   Crown,
-  Briefcase,
   TrendingUp,
   Users,
   Heart,

@@ -109,8 +109,8 @@ export class BannerApi {
       }
       
       return response.data.data
-    } catch (error: any) {
-      const message = error.response?.data?.error?.message || error.message || 'Failed to generate banner'
+    } catch (error: unknown) {
+      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to generate banner'
       throw new Error(message)
     }
   }
@@ -133,8 +133,8 @@ export class BannerApi {
       }
       
       return response.data.data.variations
-    } catch (error: any) {
-      const message = error.response?.data?.error?.message || error.message || 'Failed to generate variations'
+    } catch (error: unknown) {
+      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to generate variations'
       throw new Error(message)
     }
   }
@@ -151,8 +151,8 @@ export class BannerApi {
       }
       
       return response.data.data.templates
-    } catch (error: any) {
-      const message = error.response?.data?.error?.message || error.message || 'Failed to load templates'
+    } catch (error: unknown) {
+      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to load templates'
       throw new Error(message)
     }
   }
@@ -169,8 +169,8 @@ export class BannerApi {
       }
       
       return response.data.data
-    } catch (error: any) {
-      const message = error.response?.data?.error?.message || error.message || 'Failed to load specifications'
+    } catch (error: unknown) {
+      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to load specifications'
       throw new Error(message)
     }
   }
@@ -198,8 +198,8 @@ export class BannerApi {
       }
       
       return response.data.data
-    } catch (error: any) {
-      const message = error.response?.data?.error?.message || error.message || 'Failed to preview prompt'
+    } catch (error: unknown) {
+      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to preview prompt'
       throw new Error(message)
     }
   }
@@ -232,8 +232,8 @@ export class BannerApi {
       }
       
       return response.data.data
-    } catch (error: any) {
-      const message = error.response?.data?.error?.message || error.message || 'Failed to load banners'
+    } catch (error: unknown) {
+      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to load banners'
       throw new Error(message)
     }
   }
@@ -248,8 +248,8 @@ export class BannerApi {
       if (!response.data.success) {
         throw new Error(response.data.error?.message || 'Failed to delete banner')
       }
-    } catch (error: any) {
-      const message = error.response?.data?.error?.message || error.message || 'Failed to delete banner'
+    } catch (error: unknown) {
+      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to delete banner'
       throw new Error(message)
     }
   }
@@ -269,8 +269,8 @@ export class BannerApi {
       if (!response.data.success) {
         throw new Error(response.data.error?.message || 'Failed to update banner')
       }
-    } catch (error: any) {
-      const message = error.response?.data?.error?.message || error.message || 'Failed to update banner'
+    } catch (error: unknown) {
+      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to update banner'
       throw new Error(message)
     }
   }
@@ -285,8 +285,8 @@ export class BannerApi {
       })
       
       return response.data
-    } catch (error: any) {
-      const message = error.response?.data?.error?.message || error.message || 'Failed to download banner'
+    } catch (error: unknown) {
+      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to download banner'
       throw new Error(message)
     }
   }
@@ -314,8 +314,8 @@ export class BannerApi {
       }
       
       return response.data.data
-    } catch (error: any) {
-      const message = error.response?.data?.error?.message || error.message || 'Failed to load analytics'
+    } catch (error: unknown) {
+      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to load analytics'
       throw new Error(message)
     }
   }
