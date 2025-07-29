@@ -1,0 +1,228 @@
+{
+  "defaultUser": {
+    "email": "test.user@inergize-test.com",
+    "password": "TestPassword123!",
+    "firstName": "John",
+    "lastName": "Doe",
+    "phoneNumber": "+1-555-0123",
+    "timezone": "America/New_York",
+    "subscription": "free",
+    "preferences": {
+      "emailNotifications": true,
+      "pushNotifications": false,
+      "weeklyReports": true,
+      "automationAlerts": true
+    },
+    "profile": {
+      "bio": "Test user for E2E automation testing",
+      "industry": "Technology",
+      "experience": "5-7 years",
+      "goals": ["profile_optimization", "content_creation", "networking"]
+    }
+  },
+  "premiumUser": {
+    "email": "premium.user@inergize-test.com",
+    "password": "PremiumTest123!",
+    "firstName": "Jane",
+    "lastName": "Smith",
+    "phoneNumber": "+1-555-0124",
+    "timezone": "America/Los_Angeles",
+    "subscription": "premium",
+    "preferences": {
+      "emailNotifications": true,
+      "pushNotifications": true,
+      "weeklyReports": true,
+      "automationAlerts": true,
+      "advancedAnalytics": true
+    },
+    "profile": {
+      "bio": "Premium test user for advanced feature testing",
+      "industry": "Marketing",
+      "experience": "8-10 years",
+      "goals": ["automation", "analytics", "content_strategy", "lead_generation"]
+    }
+  },
+  "linkedinConnectedUser": {
+    "email": "linkedin.connected@inergize-test.com",
+    "password": "LinkedInTest123!",
+    "firstName": "Michael",
+    "lastName": "Johnson",
+    "phoneNumber": "+1-555-0125",
+    "timezone": "America/Chicago",
+    "subscription": "premium",
+    "linkedin": {
+      "connected": true,
+      "profileId": "linkedin-test-profile-123",
+      "accessToken": "mock-linkedin-access-token",
+      "refreshToken": "mock-linkedin-refresh-token",
+      "tokenExpires": "2024-12-31T23:59:59.000Z",
+      "permissions": ["r_liteprofile", "r_emailaddress", "w_member_social"]
+    },
+    "preferences": {
+      "emailNotifications": true,
+      "pushNotifications": true,
+      "weeklyReports": true,
+      "automationAlerts": true,
+      "advancedAnalytics": true,
+      "automationEnabled": true
+    }
+  },
+  "automationUser": {
+    "email": "automation.user@inergize-test.com",
+    "password": "AutomationTest123!",
+    "firstName": "Sarah",
+    "lastName": "Wilson",
+    "phoneNumber": "+1-555-0126",
+    "timezone": "America/Denver",
+    "subscription": "premium",
+    "linkedin": {
+      "connected": true,
+      "profileId": "linkedin-automation-profile-456",
+      "accessToken": "mock-automation-access-token",
+      "refreshToken": "mock-automation-refresh-token",
+      "tokenExpires": "2024-12-31T23:59:59.000Z",
+      "permissions": ["r_liteprofile", "r_emailaddress", "w_member_social"]
+    },
+    "automation": {
+      "connectionAutomation": {
+        "enabled": true,
+        "dailyLimit": 10,
+        "template": "connection_template_1",
+        "targetIndustries": ["Technology", "Marketing"],
+        "minDelay": 45,
+        "maxDelay": 180
+      },
+      "engagementAutomation": {
+        "enabled": true,
+        "likesPerDay": 20,
+        "commentsPerDay": 5,
+        "viewsPerDay": 15,
+        "minDelay": 60,
+        "maxDelay": 300
+      }
+    },
+    "preferences": {
+      "emailNotifications": true,
+      "pushNotifications": true,
+      "weeklyReports": true,
+      "automationAlerts": true,
+      "advancedAnalytics": true,
+      "automationEnabled": true,
+      "safetyMode": true
+    }
+  },
+  "contentCreatorUser": {
+    "email": "content.creator@inergize-test.com",
+    "password": "ContentTest123!",
+    "firstName": "David",
+    "lastName": "Brown",
+    "phoneNumber": "+1-555-0127",
+    "timezone": "America/Phoenix",
+    "subscription": "premium",
+    "linkedin": {
+      "connected": true,
+      "profileId": "linkedin-content-profile-789",
+      "accessToken": "mock-content-access-token",
+      "refreshToken": "mock-content-refresh-token",
+      "tokenExpires": "2024-12-31T23:59:59.000Z",
+      "permissions": ["r_liteprofile", "r_emailaddress", "w_member_social"]
+    },
+    "contentPreferences": {
+      "industry": "Technology",
+      "toneOfVoice": "Professional",
+      "contentTypes": ["article", "post", "carousel"],
+      "aiAssistance": true,
+      "schedulingEnabled": true,
+      "optimizationEnabled": true
+    },
+    "preferences": {
+      "emailNotifications": true,
+      "pushNotifications": true,
+      "weeklyReports": true,
+      "automationAlerts": false,
+      "advancedAnalytics": true,
+      "contentReminders": true
+    }
+  },
+  "analyticsUser": {
+    "email": "analytics.user@inergize-test.com",
+    "password": "AnalyticsTest123!",
+    "firstName": "Emma",
+    "lastName": "Davis",
+    "phoneNumber": "+1-555-0128",
+    "timezone": "America/New_York",
+    "subscription": "premium",
+    "linkedin": {
+      "connected": true,
+      "profileId": "linkedin-analytics-profile-101",
+      "accessToken": "mock-analytics-access-token",
+      "refreshToken": "mock-analytics-refresh-token",
+      "tokenExpires": "2024-12-31T23:59:59.000Z",
+      "permissions": ["r_liteprofile", "r_emailaddress", "w_member_social"]
+    },
+    "analytics": {
+      "trackingEnabled": true,
+      "reportFrequency": "weekly",
+      "metrics": ["profile_views", "post_engagement", "connection_growth", "content_performance"],
+      "goals": {
+        "monthlyProfileViews": 500,
+        "weeklyEngagementRate": 5.0,
+        "monthlyConnections": 50
+      }
+    },
+    "preferences": {
+      "emailNotifications": true,
+      "pushNotifications": true,
+      "weeklyReports": true,
+      "monthlyReports": true,
+      "advancedAnalytics": true,
+      "performanceAlerts": true
+    }
+  },
+  "testUsers": [
+    {
+      "email": "bulk.test.1@inergize-test.com",
+      "password": "BulkTest123!",
+      "firstName": "User",
+      "lastName": "One",
+      "subscription": "free"
+    },
+    {
+      "email": "bulk.test.2@inergize-test.com",
+      "password": "BulkTest123!",
+      "firstName": "User",
+      "lastName": "Two",
+      "subscription": "free"
+    },
+    {
+      "email": "bulk.test.3@inergize-test.com",
+      "password": "BulkTest123!",
+      "firstName": "User",
+      "lastName": "Three",
+      "subscription": "premium"
+    }
+  ],
+  "invalidUsers": [
+    {
+      "email": "invalid.email",
+      "password": "short",
+      "firstName": "",
+      "lastName": "",
+      "description": "Invalid email format and short password"
+    },
+    {
+      "email": "missing@password.com",
+      "password": "",
+      "firstName": "Missing",
+      "lastName": "Password",
+      "description": "Missing password field"
+    },
+    {
+      "email": "existing.user@inergize-test.com",
+      "password": "ValidPassword123!",
+      "firstName": "Existing",
+      "lastName": "User",
+      "description": "User already exists in system"
+    }
+  ]
+}

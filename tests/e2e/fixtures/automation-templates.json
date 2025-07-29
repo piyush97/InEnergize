@@ -1,0 +1,351 @@
+{
+  "connectionTemplates": {
+    "professional": {
+      "id": "connection_template_1",
+      "name": "Professional Introduction",
+      "category": "networking",
+      "message": "Hi {{firstName}}, I came across your profile and was impressed by your experience in {{industry}}. I'd love to connect and learn more about your work at {{company}}. Looking forward to connecting!",
+      "variables": ["firstName", "industry", "company"],
+      "successRate": 85.3,
+      "usageCount": 1250,
+      "complianceScore": 95,
+      "tags": ["professional", "networking", "generic"]
+    },
+    "industry_specific": {
+      "id": "connection_template_2",
+      "name": "Tech Industry Connection",
+      "category": "industry_specific",
+      "message": "Hello {{firstName}}, I noticed your expertise in {{techStack}} and your role as {{title}} at {{company}}. As someone also working in the tech space, I'd appreciate the opportunity to connect and potentially share insights about {{commonInterest}}.",
+      "variables": ["firstName", "techStack", "title", "company", "commonInterest"],
+      "successRate": 78.7,
+      "usageCount": 850,
+      "complianceScore": 92,
+      "tags": ["technology", "specific", "personalized"],
+      "industryTargets": ["Technology", "Software", "IT Services"]
+    },
+    "event_based": {
+      "id": "connection_template_3",
+      "name": "Conference Connection",
+      "category": "event_based",
+      "message": "Hi {{firstName}}, Great meeting you at {{eventName}}! I enjoyed our conversation about {{topic}}. Would love to stay connected and continue our discussion.",
+      "variables": ["firstName", "eventName", "topic"],
+      "successRate": 92.1,
+      "usageCount": 425,
+      "complianceScore": 98,
+      "tags": ["event", "personal", "high_conversion"]
+    },
+    "mutual_connection": {
+      "id": "connection_template_4",
+      "name": "Mutual Connection Introduction",
+      "category": "referral",
+      "message": "Hi {{firstName}}, I noticed we're both connected to {{mutualConnection}}. I'm interested in your work in {{field}} and would love to connect. {{mutualConnection}} speaks highly of your expertise!",
+      "variables": ["firstName", "mutualConnection", "field"],
+      "successRate": 89.5,
+      "usageCount": 650,
+      "complianceScore": 94,
+      "tags": ["referral", "mutual", "warm_intro"]
+    },
+    "content_engagement": {
+      "id": "connection_template_5",
+      "name": "Content-Based Connection",
+      "category": "content_engagement",
+      "message": "Hello {{firstName}}, I really enjoyed your recent post about {{postTopic}}. Your insights on {{specificPoint}} were particularly valuable. I'd love to connect and follow your content!",
+      "variables": ["firstName", "postTopic", "specificPoint"],
+      "successRate": 81.2,
+      "usageCount": 380,
+      "complianceScore": 93,
+      "tags": ["content", "engagement", "thoughtful"]
+    }
+  },
+  "engagementTemplates": {
+    "likes": {
+      "settings": {
+        "enabled": true,
+        "dailyLimit": 30,
+        "targetTypes": ["post", "article", "video"],
+        "industryFilter": ["Technology", "Marketing", "Sales"],
+        "excludeCompetitors": true,
+        "minEngagementThreshold": 5,
+        "timeWindow": {
+          "start": "09:00",
+          "end": "17:00",
+          "timezone": "America/New_York"
+        }
+      },
+      "complianceRules": {
+        "maxLikesPerProfile": 3,
+        "minDelayBetweenLikes": 45,
+        "maxDelayBetweenLikes": 180,
+        "avoidBotDetection": true,
+        "randomizeTimings": true
+      }
+    },
+    "comments": {
+      "templates": [
+        {
+          "id": "comment_template_1",
+          "message": "Great insights! This really resonates with my experience in {{industry}}.",
+          "variables": ["industry"],
+          "category": "supportive",
+          "successRate": 76.5
+        },
+        {
+          "id": "comment_template_2",
+          "message": "Thanks for sharing this, {{firstName}}. The point about {{keyTopic}} is particularly relevant right now.",
+          "variables": ["firstName", "keyTopic"],
+          "category": "appreciative",
+          "successRate": 82.3
+        },
+        {
+          "id": "comment_template_3",
+          "message": "Interesting perspective on {{topic}}. Have you considered {{question}}?",
+          "variables": ["topic", "question"],
+          "category": "engaging",
+          "successRate": 79.1
+        },
+        {
+          "id": "comment_template_4",
+          "message": "This aligns perfectly with what we're seeing in {{industry}} as well. Great post!",
+          "variables": ["industry"],
+          "category": "validating",
+          "successRate": 74.8
+        }
+      ],
+      "settings": {
+        "enabled": true,
+        "dailyLimit": 8,
+        "minWordCount": 5,
+        "maxWordCount": 25,
+        "requirePersonalization": true,
+        "avoidGenericComments": true
+      },
+      "complianceRules": {
+        "maxCommentsPerProfile": 1,
+        "minDelayBetweenComments": 120,
+        "maxDelayBetweenComments": 300,
+        "contentAnalysisRequired": true,
+        "spamPrevention": true
+      }
+    },
+    "profileViews": {
+      "settings": {
+        "enabled": true,
+        "dailyLimit": 25,
+        "targetCriteria": {
+          "industries": ["Technology", "Marketing", "Sales", "Consulting"],
+          "locations": ["United States", "Canada", "United Kingdom"],
+          "connectionDegree": ["2nd", "3rd"],
+          "experienceLevel": ["Mid-level", "Senior", "Director", "VP"]
+        },
+        "timeDistribution": {
+          "morning": 30,
+          "afternoon": 50,
+          "evening": 20
+        }
+      },
+      "complianceRules": {
+        "maxViewsPerProfile": 1,
+        "minDelayBetweenViews": 60,
+        "maxDelayBetweenViews": 240,
+        "respectPrivacySettings": true,
+        "trackViewHistory": true
+      }
+    },
+    "follows": {
+      "settings": {
+        "enabled": true,
+        "dailyLimit": 5,
+        "targetTypes": ["company_page", "thought_leader", "industry_influencer"],
+        "relevanceScore": {
+          "minimum": 7.0,
+          "weightFactors": {
+            "industryMatch": 0.4,
+            "contentQuality": 0.3,
+            "engagementRate": 0.2,
+            "mutualConnections": 0.1
+          }
+        }
+      },
+      "complianceRules": {
+        "maxFollowsPerDay": 5,
+        "minDelayBetweenFollows": 180,
+        "maxDelayBetweenFollows": 600,
+        "qualityOverQuantity": true,
+        "trackUnfollowRate": true
+      }
+    }
+  },
+  "safetySettings": {
+    "globalLimits": {
+      "dailyConnectionRequests": 15,
+      "weeklyConnectionRequests": 80,
+      "monthlyConnectionRequests": 300,
+      "dailyEngagementActions": 60,
+      "hourlyActionLimit": 8
+    },
+    "rateCompliance": {
+      "linkedinLimits": {
+        "connectionsPerDay": 100,
+        "likesPerDay": 200,
+        "commentsPerDay": 50,
+        "profileViewsPerDay": 150,
+        "followsPerDay": 30
+      },
+      "inergizeLimits": {
+        "connectionsPerDay": 15,
+        "likesPerDay": 30,
+        "commentsPerDay": 8,
+        "profileViewsPerDay": 25,
+        "followsPerDay": 5
+      },
+      "safetyMargin": 0.15
+    },
+    "behaviorPatterns": {
+      "humanLikeDelays": {
+        "minActionDelay": 45,
+        "maxActionDelay": 300,
+        "randomization": true,
+        "peakHours": ["09:00-11:00", "14:00-16:00"],
+        "weekendReduction": 0.3
+      },
+      "naturalPatterns": {
+        "burstingEnabled": false,
+        "consistentTiming": true,
+        "breaksBetweenSessions": true,
+        "weekendActivity": false,
+        "holidayPause": true
+      }
+    },
+    "monitoring": {
+      "healthScoreTracking": true,
+      "anomalyDetection": true,
+      "emergencyStop": {
+        "errorRateThreshold": 0.03,
+        "suspiciousActivityThreshold": 0.05,
+        "manualOverride": true
+      },
+      "alertLevels": {
+        "warning": 80,
+        "critical": 60,
+        "emergency": 40
+      }
+    }
+  },
+  "automationQueue": {
+    "connectionQueue": {
+      "pending": [
+        {
+          "id": "conn_001",
+          "targetProfileId": "target_profile_123",
+          "templateId": "connection_template_1",
+          "scheduledTime": "2024-01-15T10:30:00.000Z",
+          "priority": "normal",
+          "retryCount": 0,
+          "personalizationData": {
+            "firstName": "John",
+            "industry": "Technology",
+            "company": "Tech Corp"
+          }
+        },
+        {
+          "id": "conn_002",
+          "targetProfileId": "target_profile_456",
+          "templateId": "connection_template_2",
+          "scheduledTime": "2024-01-15T11:15:00.000Z",
+          "priority": "high",
+          "retryCount": 0,
+          "personalizationData": {
+            "firstName": "Jane",
+            "techStack": "React/Node.js",
+            "title": "Senior Developer",
+            "company": "StartupXYZ",
+            "commonInterest": "AI development"
+          }
+        }
+      ],
+      "processing": [
+        {
+          "id": "conn_003",
+          "targetProfileId": "target_profile_789",
+          "templateId": "connection_template_3",
+          "startedAt": "2024-01-15T09:45:00.000Z",
+          "status": "sending",
+          "progress": 75
+        }
+      ],
+      "completed": [
+        {
+          "id": "conn_004",
+          "targetProfileId": "target_profile_101",
+          "templateId": "connection_template_1",
+          "completedAt": "2024-01-15T09:30:00.000Z",
+          "status": "sent",
+          "response": "Connection request sent successfully"
+        }
+      ]
+    },
+    "engagementQueue": {
+      "pending": [
+        {
+          "id": "engage_001",
+          "type": "like",
+          "targetPostId": "post_123",
+          "targetProfileId": "profile_456",
+          "scheduledTime": "2024-01-15T10:45:00.000Z",
+          "priority": "normal"
+        },
+        {
+          "id": "engage_002",
+          "type": "comment",
+          "targetPostId": "post_789",
+          "targetProfileId": "profile_101",
+          "templateId": "comment_template_2",
+          "scheduledTime": "2024-01-15T11:30:00.000Z",
+          "priority": "high",
+          "personalizationData": {
+            "firstName": "Sarah",
+            "keyTopic": "AI in marketing"
+          }
+        }
+      ]
+    }
+  },
+  "analyticsData": {
+    "campaignPerformance": {
+      "connectionCampaign": {
+        "sent": 125,
+        "accepted": 89,
+        "declined": 8,
+        "pending": 28,
+        "acceptanceRate": 71.2,
+        "responseRate": 77.6,
+        "averageResponseTime": "2.3 days"
+      },
+      "engagementCampaign": {
+        "likes": {
+          "sent": 450,
+          "reciprocated": 78,
+          "reciprocationRate": 17.3
+        },
+        "comments": {
+          "sent": 95,
+          "replies": 23,
+          "replyRate": 24.2,
+          "averageEngagement": 3.2
+        },
+        "profileViews": {
+          "sent": 280,
+          "viewsBack": 45,
+          "reciprocationRate": 16.1
+        }
+      }
+    },
+    "complianceMetrics": {
+      "safetyScore": 87,
+      "rateLimitAdherence": 98.5,
+      "errorRate": 0.02,
+      "flaggedActions": 0,
+      "healthTrend": "improving"
+    }
+  }
+}
