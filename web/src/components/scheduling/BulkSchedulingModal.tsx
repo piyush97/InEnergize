@@ -42,7 +42,8 @@ import {
   FileText,
   Target,
   Users,
-  BarChart3
+  BarChart3,
+  Eye
 } from 'lucide-react';
 
 interface ContentQueueItem {
@@ -178,7 +179,7 @@ export const BulkSchedulingModal: React.FC<BulkSchedulingModalProps> = ({
 
   const generateTemplateSchedules = (template: SchedulingTemplate, count: number): Date[] => {
     const schedules: Date[] = [];
-    let currentDate = new Date(template.startDate);
+    const currentDate = new Date(template.startDate);
     
     for (let i = 0; i < count; i++) {
       // Find next valid day and time slot
@@ -239,7 +240,7 @@ export const BulkSchedulingModal: React.FC<BulkSchedulingModalProps> = ({
 
   const generateCustomSchedules = (count: number): Date[] => {
     const schedules: Date[] = [];
-    let currentDate = new Date(customSettings.startDate);
+    const currentDate = new Date(customSettings.startDate);
     
     for (let i = 0; i < count; i++) {
       // Find next valid day
@@ -333,7 +334,7 @@ export const BulkSchedulingModal: React.FC<BulkSchedulingModalProps> = ({
       const headers = lines[0].split(',').map(h => h.trim());
       const data = lines.slice(1).map(line => {
         const values = line.split(',').map(v => v.trim());
-        const obj: any = {};
+        const obj: Record<string, string> = {};
         headers.forEach((header, index) => {
           obj[header] = values[index];
         });
@@ -345,7 +346,7 @@ export const BulkSchedulingModal: React.FC<BulkSchedulingModalProps> = ({
         id: `csv-import-${index}`,
         contentId: row.contentId || `generated-${index}`,
         title: row.title || `Imported Content ${index + 1}`,
-        contentType: (row.contentType || 'POST') as any,
+        contentType: (row.contentType || 'POST') as 'POST' | 'ARTICLE' | 'CAROUSEL' | 'POLL',
         scheduledAt: new Date(row.scheduledAt || Date.now()),
         status: 'QUEUED' as const,
         priority: parseInt(row.priority) || 5,
@@ -571,7 +572,7 @@ export const BulkSchedulingModal: React.FC<BulkSchedulingModalProps> = ({
                         value={customSettings.interval} 
                         onValueChange={(value) => setCustomSettings(prev => ({
                           ...prev,
-                          interval: value as any
+                          interval: value as 'daily' | 'weekly' | 'custom'
                         }))}
                       >
                         <SelectTrigger>

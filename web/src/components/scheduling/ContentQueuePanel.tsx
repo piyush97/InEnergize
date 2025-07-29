@@ -209,7 +209,7 @@ export const ContentQueuePanel: React.FC<ContentQueuePanelProps> = ({
             </Select>
 
             {/* Sort By */}
-            <Select value={sortBy} onValueChange={(value) => setSortBy(value as any)}>
+            <Select value={sortBy} onValueChange={(value: 'priority' | 'created' | 'engagement') => setSortBy(value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>

@@ -30,11 +30,9 @@ import {
   TrendingUp,
   Lightbulb,
   Brain,
-  Users,
   Briefcase,
   Hash,
   Eye,
-  Clock,
   BarChart3,
   RefreshCw,
   Send,
@@ -499,7 +497,7 @@ export const ContentGenerationStudio: React.FC = () => {
                       {/* Metrics Bar */}
                       <div className="grid grid-cols-4 gap-4 pb-4 border-b">
                         <div className="text-center">
-                          <div className="text-2xl font-bold" className={getEngagementColor(variant.engagementScore)}>
+                          <div className={`text-2xl font-bold ${getEngagementColor(variant.engagementScore)}`}>
                             {variant.engagementScore}%
                           </div>
                           <div className="text-xs text-gray-500">Engagement Score</div>

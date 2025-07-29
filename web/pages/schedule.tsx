@@ -69,7 +69,7 @@ const SchedulePage: NextPage = () => {
     console.log('Content scheduled:', eventId);
   };
 
-  const handleBulkSchedule = (events: any[]) => {
+  const handleBulkSchedule = (events: unknown[]) => {
     // Optional: Show bulk scheduling success notification
     console.log('Bulk scheduled:', events.length, 'items');
   };
