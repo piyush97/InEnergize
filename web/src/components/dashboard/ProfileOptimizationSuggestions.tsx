@@ -41,6 +41,22 @@ interface OptimizationSuggestion {
   completed: boolean;
   aiGenerated?: boolean;
   complianceNotes?: string;
+  expectedImpact?: string;
+}
+
+interface PredictiveRecommendation {
+  id: string;
+  field: string;
+  priority: 'high' | 'medium' | 'low';
+  impact: number;
+  timeEstimate: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  suggestion: string;
+  category: 'content' | 'engagement' | 'visibility' | 'networking';
+  completed: boolean;
+  aiGenerated?: boolean;
+  complianceNotes?: string;
+  expectedImpact?: string;
 }
 
 interface ProfileOptimizationData {
@@ -138,7 +154,7 @@ const ProfileOptimizationSuggestions: React.FC<ProfileOptimizationSuggestionsPro
       // Merge traditional suggestions with AI predictions
       const mergedSuggestions = [
         ...(suggestionsResult.data?.suggestions || []),
-        ...predictiveRecommendations.map((rec: any, index: number) => ({
+        ...predictiveRecommendations.map((rec: PredictiveRecommendation, index: number) => ({
           id: `ai-${index}`,
           field: rec.category,
           priority: rec.priority,
@@ -492,9 +508,9 @@ const ProfileOptimizationSuggestions: React.FC<ProfileOptimizationSuggestionsPro
                                 <Star className="h-3 w-3 mr-1" />
                                 AI Generated
                               </Badge>
-                              {(suggestion as any).expectedImpact && (
+                              {('expectedImpact' in suggestion) && suggestion.expectedImpact && (
                                 <div className="text-xs text-green-600 font-medium">
-                                  Expected: {(suggestion as any).expectedImpact}
+                                  Expected: {('expectedImpact' in suggestion) ? suggestion.expectedImpact : ''}
                                 </div>
                               )}
                             </>
