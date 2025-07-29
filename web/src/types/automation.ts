@@ -25,7 +25,7 @@ export interface EngagementTask {
   priority: 'low' | 'medium' | 'high';
   status: 'pending' | 'scheduled' | 'completed' | 'failed' | 'cancelled';
   score?: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   scheduledAt?: Date;
   completedAt?: Date;
   createdAt: Date;
@@ -183,7 +183,7 @@ export interface QueueItem {
   retryCount: number;
   maxRetries: number;
   lastError?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AutomationMetrics {
@@ -216,7 +216,7 @@ export interface AutomationMetrics {
 export interface AutomationEvent {
   type: 'safety_alert' | 'queue_update' | 'stats_update' | 'automation_status';
   timestamp: Date;
-  data: any;
+  data: unknown;
 }
 
 export interface SafetyAlertEvent extends AutomationEvent {
@@ -251,13 +251,13 @@ export interface AutomationStatusEvent extends AutomationEvent {
 }
 
 // API Response types
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: {
     message: string;
     code: string;
-    details?: any;
+    details?: unknown;
   };
 }
 
@@ -275,7 +275,7 @@ export interface ScheduleEngagementRequest {
   content?: string;
   templateId?: string;
   priority?: 'low' | 'medium' | 'high';
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 // Component prop types

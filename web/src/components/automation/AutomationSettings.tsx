@@ -74,7 +74,7 @@ export function AutomationSettings({
     setHasUnsavedChanges(settingsChanged);
   }, [localSettings, settings]);
 
-  const handleSettingsUpdate = (section: keyof AutomationSettingsType, updates: any) => {
+  const handleSettingsUpdate = (section: keyof AutomationSettingsType, updates: Record<string, unknown>) => {
     setLocalSettings(prev => ({
       ...prev,
       [section]: {

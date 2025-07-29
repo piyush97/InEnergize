@@ -37,7 +37,7 @@ import {
 } from "lucide-react";
 
 import {
-  QueuePanelProps,
+  QueuePanelProps as AutomationQueuePanelProps,
   QueueItem
 } from "@/types/automation";
 
@@ -67,7 +67,6 @@ export function AutomationQueuePanel({
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showAnalytics, setShowAnalytics] = useState(false);
   const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h' | '7d'>('24h');
   const [autoRefresh, setAutoRefresh] = useState(true);
 
@@ -89,12 +88,7 @@ export function AutomationQueuePanel({
         const data = JSON.parse(event.data);
         
         if (data.type === 'queue_update') {
-          // Update queue items with real-time data
-          // This would be handled by parent component
           console.log('Queue update received:', data);
-        } else if (data.type === 'queue_analytics') {
-          // Update analytics data
-          setQueueAnalytics(data.analytics);
         }
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
@@ -141,40 +135,13 @@ export function AutomationQueuePanel({
       return acc;
     }, {} as Record<string, number>);
 
-    const typeCounts = recentItems.reduce((acc, item) => {
-      acc[item.type] = (acc[item.type] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-
-    const priorityCounts = recentItems.reduce((acc, item) => {
-      acc[item.priority] = (acc[item.priority] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-
-    const avgWaitTime = recentItems.length > 0 
-      ? recentItems
-          .filter(item => item.processedAt)
-          .reduce((acc, item) => {
-            const waitTime = new Date(item.processedAt!).getTime() - new Date(item.scheduledAt).getTime();
-            return acc + waitTime;
-          }, 0) / recentItems.filter(item => item.processedAt).length
-      : 0;
-
-    const successRate = recentItems.length > 0
-      ? (statusCounts.completed || 0) / recentItems.length * 100
-      : 0;
-
     return {
       total: filteredItems.length,
       pending: statusCounts.pending || 0,
       processing: statusCounts.processing || 0,
       completed: statusCounts.completed || 0,
       failed: statusCounts.failed || 0,
-      byType: typeCounts,
-      byPriority: priorityCounts,
-      avgWaitTime: Math.round(avgWaitTime / 1000 / 60), // minutes
-      successRate: Math.round(successRate),
-      throughputPerHour: Math.round((statusCounts.completed || 0) / (timeRangeMs / (60 * 60 * 1000)))
+      estimatedTimeRemaining: Math.round(statusCounts.pending * 2) // simplified calculation
     };
   }, [filteredItems, queueItems, timeRange]);
 
@@ -210,7 +177,6 @@ export function AutomationQueuePanel({
       
       if (draggedIndex === -1 || targetIndex === -1) return;
 
-      // Calculate new priority based on position
       const newPriority = targetIndex < draggedIndex ? 'high' : 'medium';
       
       await onUpdatePriority(draggedItem, newPriority);
@@ -246,15 +212,15 @@ export function AutomationQueuePanel({
     }
   };
 
-  const handleBulkAction = async (action: 'cancel' | 'retry' | 'priority') => {
+  const handleBulkCancel = async () => {
     if (selectedItems.length === 0) return;
 
     try {
       setLoading(true);
-      await onBulkAction(action, selectedItems);
+      await onBulkAction('cancel', selectedItems);
       setSelectedItems([]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to ${action} selected items`);
+      setError(err instanceof Error ? err.message : 'Failed to cancel selected items');
     } finally {
       setLoading(false);
     }
@@ -330,16 +296,6 @@ export function AutomationQueuePanel({
     });
   };
 
-  const formatDuration = (ms: number) => {
-    const minutes = Math.floor(ms / 1000 / 60);
-    const hours = Math.floor(minutes / 60);
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes % 60}m`;
-    }
-    return `${minutes}m`;
-  };
-
   return (
     <div className="space-y-6">
       {/* Header with Stats Dashboard */}
@@ -353,30 +309,11 @@ export function AutomationQueuePanel({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setShowAnalytics(!showAnalytics)}
-            >
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Analytics
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
               onClick={() => setAutoRefresh(!autoRefresh)}
             >
               <Activity className={`h-4 w-4 mr-2 ${autoRefresh ? 'text-green-500' : 'text-gray-400'}`} />
               {autoRefresh ? 'Live' : 'Paused'}
             </Button>
-            <Select value={timeRange} onValueChange={setTimeRange}>
-              <SelectTrigger className="w-20">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1h">1h</SelectItem>
-                <SelectItem value="6h">6h</SelectItem>
-                <SelectItem value="24h">24h</SelectItem>
-                <SelectItem value="7d">7d</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
@@ -410,28 +347,6 @@ export function AutomationQueuePanel({
             <CardContent className="pt-4">
               <div className="text-2xl font-bold text-red-600">{queueStats.failed}</div>
               <p className="text-xs text-gray-500">Failed</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Performance Metrics */}
-        <div className="grid grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="pt-4">
-              <div className="text-lg font-bold text-purple-600">{queueStats.successRate}%</div>
-              <p className="text-xs text-gray-500">Success Rate</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="text-lg font-bold text-orange-600">{queueStats.avgWaitTime}m</div>
-              <p className="text-xs text-gray-500">Avg Wait Time</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="text-lg font-bold text-teal-600">{queueStats.throughputPerHour}/h</div>
-              <p className="text-xs text-gray-500">Throughput</p>
             </CardContent>
           </Card>
         </div>
@@ -504,18 +419,10 @@ export function AutomationQueuePanel({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => handleBulkAction('cancel')}
+                onClick={handleBulkCancel}
                 disabled={loading}
               >
                 Cancel Selected
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleBulkAction('retry')}
-                disabled={loading}
-              >
-                Retry Selected
               </Button>
               <Button
                 size="sm"
@@ -545,102 +452,121 @@ export function AutomationQueuePanel({
         </div>
 
         <div className="divide-y">
-          {filteredItems.map((item) => (
-            <div
-              key={item.id}
-              className={`p-4 hover:bg-gray-50 transition-colors ${
-                dragOverItem === item.id ? 'bg-blue-50 border-blue-200' : ''
-              } ${selectedItems.includes(item.id) ? 'bg-blue-50' : ''}`}
-              draggable
-              onDragStart={(e) => handleDragStart(e, item.id)}
-              onDragOver={(e) => handleDragOver(e, item.id)}
-              onDragEnd={handleDragEnd}
-              onDrop={(e) => handleDrop(e, item.id)}
-            >
-              <div className="flex items-center space-x-4">
-                <Checkbox
-                  checked={selectedItems.includes(item.id)}
-                  onCheckedChange={() => toggleItemSelection(item.id)}
-                />
-                
-                <div className="cursor-move">
-                  <GripVertical className="h-4 w-4 text-gray-400" />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-medium text-sm">{item.type}</span>
-                      {getStatusBadge(item.status)}
-                      {getPriorityBadge(item.priority)}
-                    </div>
-                    <span className="text-xs text-gray-500">
-                      {formatTime(item.scheduledAt)}
-                    </span>
+          {filteredItems.length === 0 ? (
+            <div className="text-center py-12">
+              <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No queue items found</h3>
+              <p className="text-gray-500">
+                {searchQuery || filterStatus !== 'all' || filterType !== 'all' || filterPriority !== 'all'
+                  ? 'Try adjusting your search or filters'
+                  : 'No automation tasks are currently queued'
+                }
+              </p>
+            </div>
+          ) : (
+            filteredItems.map((item) => (
+              <div
+                key={item.id}
+                className={`p-4 hover:bg-gray-50 transition-colors ${
+                  dragOverItem === item.id ? 'bg-blue-50 border-blue-200' : ''
+                } ${selectedItems.includes(item.id) ? 'bg-blue-50' : ''}`}
+                draggable
+                onDragStart={(e) => handleDragStart(e, item.id)}
+                onDragOver={(e) => handleDragOver(e, item.id)}
+                onDragEnd={handleDragEnd}
+                onDrop={(e) => handleDrop(e, item.id)}
+              >
+                <div className="flex items-center space-x-4">
+                  <Checkbox
+                    checked={selectedItems.includes(item.id)}
+                    onCheckedChange={() => toggleItemSelection(item.id)}
+                  />
+                  
+                  <div className="cursor-move">
+                    <GripVertical className="h-4 w-4 text-gray-400" />
                   </div>
 
-                  <div className="text-sm text-gray-600 mb-2">
-                    Target: <span className="font-medium">{item.targetId}</span>
-                    {item.content && (
-                      <span className="ml-2">
-                        Content: <span className="italic">"{item.content.substring(0, 50)}..."</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-medium text-sm">{item.type}</span>
+                        {getStatusBadge(item.status)}
+                        {getPriorityBadge(item.priority)}
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {formatTime(item.scheduledAt)}
                       </span>
-                    )}
-                  </div>
+                    </div>
 
-                  {item.processedAt && (
-                    <div className="text-xs text-gray-500">
-                      Processed: {formatTime(item.processedAt)}
-                      {item.error && (
-                        <span className="ml-2 text-red-600">
-                          Error: {item.error}
+                    <div className="text-sm text-gray-600 mb-2">
+                      Target: <span className="font-medium">{item.targetId}</span>
+                      {item.content && (
+                        <span className="ml-2">
+                          Content: <span className="italic">"{item.content.substring(0, 50)}..."</span>
                         </span>
                       )}
                     </div>
-                  )}
-                </div>
 
-                <div className="flex items-center space-x-2">
-                  {item.status === 'failed' && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleRetryItem(item.id)}
-                      disabled={loading}
-                    >
-                      <RotateCcw className="h-3 w-3 mr-1" />
-                      Retry
-                    </Button>
-                  )}
-                  
-                  {(item.status === 'pending' || item.status === 'processing') && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleCancelItem(item.id)}
-                      disabled={loading}
-                    >
-                      <X className="h-3 w-3 mr-1" />
-                      Cancel
-                    </Button>
-                  )}
+                    {item.processedAt && (
+                      <div className="text-xs text-gray-500">
+                        Processed: {formatTime(item.processedAt)}
+                        {item.error && (
+                          <span className="ml-2 text-red-600">
+                            Error: {item.error}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    {item.status === 'failed' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleRetryItem(item.id)}
+                        disabled={loading}
+                      >
+                        <RotateCcw className="h-3 w-3 mr-1" />
+                        Retry
+                      </Button>
+                    )}
+                    
+                    {(item.status === 'pending' || item.status === 'processing') && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCancelItem(item.id)}
+                        disabled={loading}
+                      >
+                        <X className="h-3 w-3 mr-1" />
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
 
-        {/* Empty State */}
-        {filteredItems.length === 0 && (
-          <div className="text-center py-12">
-            <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No queue items found</h3>
-            <p className="text-gray-500">
-              {searchQuery || filterStatus !== 'all' || filterType !== 'all' || filterPriority !== 'all'
-                ? 'Try adjusting your search or filters'
-                : 'No automation tasks are currently queued'
-              }
-            </p>
+        {/* Queue Progress */}
+        {queueStats.pending > 0 && (
+          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">Queue Progress</span>
+              <span className="text-sm text-gray-500">
+                {queueStats.completed + queueStats.failed} of {queueStats.total} completed
+              </span>
+            </div>
+            <Progress 
+              value={((queueStats.completed + queueStats.failed) / queueStats.total) * 100} 
+              className="h-2"
+            />
+            <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+              <span>Estimated completion: {Math.round(queueStats.estimatedTimeRemaining)} minutes</span>
+              <span>Success rate: {queueStats.total > 0 ? Math.round((queueStats.completed / (queueStats.completed + queueStats.failed || 1)) * 100) : 0}%</span>
+            </div>
           </div>
         )}
       </div>
@@ -652,333 +578,6 @@ export function AutomationQueuePanel({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-    </div>
-  );
-};
-
-  const getTypeIcon = (type: QueueItem['type'], action: string) => {
-    if (type === 'connection') {
-      return <Users className="h-4 w-4 text-blue-500" />;
-    }
-    
-    // Engagement types
-    switch (action) {
-      case 'like':
-        return <Heart className="h-4 w-4 text-red-500" />;
-      case 'comment':
-        return <MessageSquare className="h-4 w-4 text-blue-500" />;
-      case 'view_profile':
-        return <Eye className="h-4 w-4 text-green-500" />;
-      case 'follow':
-        return <UserPlus className="h-4 w-4 text-purple-500" />;
-      default:
-        return <Zap className="h-4 w-4 text-gray-500" />;
-    }
-  };
-
-  const getPriorityColor = (priority: QueueItem['priority']) => {
-    switch (priority) {
-      case 'high':
-        return 'text-red-600 border-red-200';
-      case 'medium':
-        return 'text-yellow-600 border-yellow-200';
-      case 'low':
-        return 'text-green-600 border-green-200';
-      default:
-        return 'text-gray-600 border-gray-200';
-    }
-  };
-
-  const formatEstimatedTime = (seconds?: number) => {
-    if (!seconds) return 'Unknown';
-    
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    
-    if (minutes > 0) {
-      return `${minutes}m ${remainingSeconds}s`;
-    }
-    return `${remainingSeconds}s`;
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Queue Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Items</CardTitle>
-            <Timer className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{queueStats.total}</div>
-            <p className="text-xs text-muted-foreground">In queue</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">{queueStats.pending}</div>
-            <p className="text-xs text-muted-foreground">Waiting</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Processing</CardTitle>
-            <Play className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{queueStats.processing}</div>
-            <p className="text-xs text-muted-foreground">Active</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completed</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{queueStats.completed}</div>
-            <p className="text-xs text-muted-foreground">Finished</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">ETA</CardTitle>
-            <Timer className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{Math.round(queueStats.estimatedTimeRemaining)}m</div>
-            <p className="text-xs text-muted-foreground">Remaining</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Queue Management */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Automation Queue</CardTitle>
-              <CardDescription>
-                Drag and drop to reorder • {filteredItems.length} of {items.length} items shown
-              </CardDescription>
-            </div>
-            {selectedItems.length > 0 && (
-              <div className="flex items-center space-x-2">
-                <Badge variant="outline">{selectedItems.length} selected</Badge>
-                <Button 
-                  variant="destructive" 
-                  size="sm"
-                  onClick={handleBulkCancel}
-                >
-                  Cancel Selected
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {/* Filters */}
-          <div className="flex items-center space-x-4 mb-6">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search queue items..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="processing">Processing</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="connection">Connections</SelectItem>
-                <SelectItem value="engagement">Engagement</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={filterPriority} onValueChange={setFilterPriority}>
-              <SelectTrigger className="w-[140px]">
-                <Filter className="h-4 w-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Priority</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Queue Items */}
-          <div className="space-y-2">
-            {filteredItems.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <Timer className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No queue items found</p>
-                <p className="text-sm">Items will appear here when you schedule automation tasks</p>
-              </div>
-            ) : (
-              filteredItems.map((item, index) => (
-                <div
-                  key={item.id}
-                  draggable={item.status === 'pending'}
-                  onDragStart={(e) => handleDragStart(e, item.id)}
-                  onDragOver={(e) => handleDragOver(e, item.id)}
-                  onDragEnd={handleDragEnd}
-                  onDrop={(e) => handleDrop(e, item.id)}
-                  className={`flex items-center space-x-4 p-4 border rounded-lg transition-all
-                    ${draggedItem === item.id ? 'opacity-50' : ''}
-                    ${dragOverItem === item.id ? 'border-blue-500 bg-blue-50' : ''}
-                    ${selectedItems.includes(item.id) ? 'border-blue-300 bg-blue-50' : ''}
-                    ${item.status === 'pending' ? 'cursor-move' : 'cursor-default'}
-                    ${getPriorityColor(item.priority)}
-                  `}
-                >
-                  {/* Selection Checkbox */}
-                  <input
-                    type="checkbox"
-                    checked={selectedItems.includes(item.id)}
-                    onChange={() => toggleItemSelection(item.id)}
-                    className="w-4 h-4"
-                  />
-
-                  {/* Drag Handle */}
-                  {item.status === 'pending' && (
-                    <GripVertical className="h-4 w-4 text-muted-foreground" />
-                  )}
-
-                  {/* Status Icon */}
-                  {getStatusIcon(item.status)}
-
-                  {/* Item Type Icon */}
-                  {getTypeIcon(item.type, item.action)}
-
-                  {/* Item Details */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-medium capitalize">
-                        {item.action.replace('_', ' ')}
-                      </span>
-                      <span className="text-muted-foreground">•</span>
-                      <span className="text-sm text-muted-foreground truncate">
-                        {item.targetName || item.targetId}
-                      </span>
-                    </div>
-                    
-                    <div className="flex items-center space-x-4 mt-1 text-xs text-muted-foreground">
-                      <span>Scheduled: {item.scheduledAt.toLocaleString()}</span>
-                      {item.estimatedDuration && (
-                        <>
-                          <span>•</span>
-                          <span>ETA: {formatEstimatedTime(item.estimatedDuration)}</span>
-                        </>
-                      )}
-                      {item.retryCount > 0 && (
-                        <>
-                          <span>•</span>
-                          <span>Retries: {item.retryCount}/{item.maxRetries}</span>
-                        </>
-                      )}
-                    </div>
-
-                    {item.lastError && (
-                      <div className="text-xs text-red-600 mt-1">
-                        Error: {item.lastError}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Priority Badge */}
-                  <Badge 
-                    variant="outline" 
-                    className={`capitalize ${
-                      item.priority === 'high' ? 'border-red-500 text-red-700' :
-                      item.priority === 'medium' ? 'border-yellow-500 text-yellow-700' :
-                      'border-green-500 text-green-700'
-                    }`}
-                  >
-                    {item.priority}
-                  </Badge>
-
-                  {/* Status Badge */}
-                  {getStatusBadge(item.status)}
-
-                  {/* Action Buttons */}
-                  <div className="flex items-center space-x-1">
-                    {item.status === 'pending' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleCancelItem(item.id)}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    )}
-                    
-                    {item.status === 'failed' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleRetryItem(item.id)}
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Queue Progress */}
-          {queueStats.pending > 0 && (
-            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">Queue Progress</span>
-                <span className="text-sm text-muted-foreground">
-                  {queueStats.completed + queueStats.failed} of {queueStats.total} completed
-                </span>
-              </div>
-              <Progress 
-                value={((queueStats.completed + queueStats.failed) / queueStats.total) * 100} 
-                className="h-2"
-              />
-              <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-                <span>Estimated completion: {Math.round(queueStats.estimatedTimeRemaining)} minutes</span>
-                <span>Success rate: {queueStats.total > 0 ? Math.round((queueStats.completed / (queueStats.completed + queueStats.failed || 1)) * 100) : 0}%</span>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

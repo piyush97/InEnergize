@@ -373,7 +373,7 @@ export function ConnectionAutomation({
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="priority">Priority</Label>
-                    <Select value={priority} onValueChange={(value: any) => setPriority(value)}>
+                    <Select value={priority} onValueChange={(value: 'low' | 'medium' | 'high') => setPriority(value)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>

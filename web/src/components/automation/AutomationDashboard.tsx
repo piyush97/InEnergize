@@ -157,7 +157,7 @@ export function AutomationDashboard({
     fetchInitialData();
   }, []);
 
-  const handleScheduleConnection = async (connectionData: any) => {
+  const handleScheduleConnection = async (connectionData: ScheduleConnectionRequest) => {
     try {
       setLoading(true);
       const response = await fetch('/api/automation/connections/schedule', {
@@ -176,7 +176,7 @@ export function AutomationDashboard({
     }
   };
 
-  const handleScheduleEngagement = async (engagementData: any) => {
+  const handleScheduleEngagement = async (engagementData: ScheduleEngagementRequest) => {
     try {
       setLoading(true);
       const response = await fetch('/api/automation/engagement/schedule', {
@@ -314,7 +314,7 @@ export function AutomationDashboard({
       {/* Navigation Tabs */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)} className="w-full">
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'overview' | 'connections' | 'engagement' | 'queue' | 'templates' | 'safety')} className="w-full">
             <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="overview" className="flex items-center space-x-2">
                 <BarChart3 className="h-4 w-4" />
