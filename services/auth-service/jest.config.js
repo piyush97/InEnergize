@@ -32,8 +32,5 @@ module.exports = {
     'node_modules/(?!(.*\\.mjs$))'
   ],
   clearMocks: true,
-  restoreMocks: true,
-  moduleNameMapping: {
-    '^@/(.*)$': '<rootDir>/src/$1'
-  }
+  restoreMocks: true
 };

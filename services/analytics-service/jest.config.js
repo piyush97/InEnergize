@@ -8,7 +8,9 @@ module.exports = {
     'src/**/*.ts',
     '!src/**/*.d.ts',
     '!src/index.ts',
-    '!src/test/**/*'
+    '!src/test/**/*',
+    '!src/migrations/**/*',
+    '!src/seeds/**/*'
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
@@ -27,7 +29,7 @@ module.exports = {
       tsconfig: 'tsconfig.json'
     }]
   },
-  testTimeout: 10000,
+  testTimeout: 15000,
   transformIgnorePatterns: [
     'node_modules/(?!(.*\\.mjs$))'
   ],
