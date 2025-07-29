@@ -1,0 +1,300 @@
+# InErgize Kong Configuration - Production-Ready
+_format_version: "3.0"
+
+# Enhanced service definitions with health checks and circuit breakers
+services:
+  - name: auth-service
+    url: http://inergize-auth-service:3001
+    connect_timeout: 5000
+    write_timeout: 30000
+    read_timeout: 30000
+    retries: 3
+    tags: ["auth", "core"]
+    
+  - name: user-service
+    url: http://inergize-user-service:3002
+    connect_timeout: 5000
+    write_timeout: 30000
+    read_timeout: 30000
+    retries: 3
+    tags: ["user", "core"]
+    
+  - name: linkedin-service
+    url: http://inergize-linkedin-service:3003
+    connect_timeout: 10000
+    write_timeout: 60000
+    read_timeout: 60000
+    retries: 2
+    tags: ["linkedin", "integration"]
+    
+  - name: analytics-service
+    url: http://inergize-analytics-service:3004
+    connect_timeout: 5000
+    write_timeout: 30000
+    read_timeout: 30000
+    retries: 3
+    tags: ["analytics", "core"]
+    
+  - name: ai-service
+    url: http://inergize-ai-service:3005
+    connect_timeout: 15000
+    write_timeout: 120000
+    read_timeout: 120000
+    retries: 1
+    tags: ["ai", "integration"]
+
+# Enhanced routing with versioning and load balancing
+routes:
+  # Auth Service Routes with enhanced security
+  - name: auth-login
+    service: auth-service
+    paths: ["/api/v1/auth/login"]
+    methods: ["POST"]
+    strip_path: true
+    preserve_host: false
+    tags: ["auth", "public"]
+    
+  - name: auth-register
+    service: auth-service
+    paths: ["/api/v1/auth/register"]
+    methods: ["POST"]
+    strip_path: true
+    preserve_host: false
+    tags: ["auth", "public"]
+    
+  - name: auth-protected
+    service: auth-service
+    paths: ["/api/v1/auth"]
+    methods: ["GET", "PUT", "DELETE"]
+    strip_path: true
+    preserve_host: false
+    tags: ["auth", "protected"]
+
+  # User Service Routes
+  - name: user-routes
+    service: user-service
+    paths: ["/api/v1/users"]
+    methods: ["GET", "PUT", "DELETE", "PATCH"]
+    strip_path: true
+    preserve_host: false
+    tags: ["user", "protected"]
+
+  # LinkedIn Service Routes with specialized rate limiting
+  - name: linkedin-oauth
+    service: linkedin-service
+    paths: ["/api/v1/linkedin/oauth"]
+    methods: ["GET", "POST"]
+    strip_path: true
+    preserve_host: false
+    tags: ["linkedin", "oauth"]
+    
+  - name: linkedin-api
+    service: linkedin-service
+    paths: ["/api/v1/linkedin"]
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    strip_path: true
+    preserve_host: false
+    tags: ["linkedin", "protected"]
+
+  # Analytics Service Routes with caching
+  - name: analytics-realtime
+    service: analytics-service
+    paths: ["/api/v1/analytics/realtime"]
+    methods: ["GET"]
+    strip_path: true
+    preserve_host: false
+    tags: ["analytics", "realtime"]
+    
+  - name: analytics-api
+    service: analytics-service
+    paths: ["/api/v1/analytics"]
+    methods: ["GET", "POST"]
+    strip_path: true
+    preserve_host: false
+    tags: ["analytics", "protected"]
+
+  # AI Service Routes with extended timeouts
+  - name: ai-content
+    service: ai-service
+    paths: ["/api/v1/ai/content"]
+    methods: ["POST"]
+    strip_path: true
+    preserve_host: false
+    tags: ["ai", "generation"]
+    
+  - name: ai-banners
+    service: ai-service
+    paths: ["/api/v1/ai/banners"]
+    methods: ["POST", "GET"]
+    strip_path: true
+    preserve_host: false
+    tags: ["ai", "generation"]
+
+# Enhanced global plugins with production configurations
+plugins:
+  # Advanced CORS with origin validation
+  - name: cors
+    config:
+      origins:
+        - "https://inergize.com"
+        - "https://www.inergize.com"
+        - "https://app.inergize.com"
+        - "https://dashboard.inergize.com"
+      methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+      headers:
+        - "Accept"
+        - "Accept-Version"
+        - "Content-Length"
+        - "Content-Type"
+        - "Date"
+        - "Authorization"
+        - "X-Auth-Token"
+        - "X-Request-ID"
+        - "X-API-Key"
+      exposed_headers:
+        - "X-Auth-Token"
+        - "X-RateLimit-Remaining"
+        - "X-Request-ID"
+      credentials: true
+      max_age: 3600
+      preflight_continue: false
+
+  # Comprehensive security headers
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "X-Content-Type-Options: nosniff"
+          - "X-Frame-Options: DENY"
+          - "X-XSS-Protection: 1; mode=block"
+          - "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload"
+          - "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+          - "Referrer-Policy: strict-origin-when-cross-origin"
+          - "Permissions-Policy: geolocation=(), microphone=(), camera=()"
+
+  # Request/Response logging with structured format
+  - name: file-log
+    config:
+      path: "/tmp/kong-access.log"
+      custom_fields_by_lua:
+        request_id: "return kong.ctx.shared.request_id"
+        user_id: "return kong.ctx.shared.authenticated_user_id"
+        subscription_tier: "return kong.ctx.shared.user_subscription"
+
+  # Request ID generation
+  - name: correlation-id
+    config:
+      header_name: "X-Request-ID"
+      generator: "uuid"
+      echo_downstream: true
+
+# Route-specific plugins
+- route: auth-login
+  plugins:
+    - name: rate-limiting
+      config:
+        minute: 5
+        hour: 20
+        day: 100
+        policy: local
+        hide_client_headers: false
+        fault_tolerant: true
+
+- route: auth-register  
+  plugins:
+    - name: rate-limiting
+      config:
+        minute: 2
+        hour: 10
+        day: 20
+        policy: local
+        hide_client_headers: false
+        fault_tolerant: true
+
+- route: linkedin-api
+  plugins:
+    - name: rate-limiting
+      config:
+        minute: 20
+        hour: 100
+        day: 500
+        policy: local
+        hide_client_headers: false
+        fault_tolerant: true
+    - name: proxy-cache
+      config:
+        response_code: [200, 301, 404]
+        request_method: ["GET", "HEAD"]
+        content_type: ["application/json"]
+        cache_ttl: 300
+        strategy: memory
+
+- route: analytics-realtime
+  plugins:
+    - name: rate-limiting
+      config:
+        minute: 60
+        hour: 1000
+        day: 10000
+        policy: local
+        hide_client_headers: false
+        fault_tolerant: true
+
+- route: ai-content
+  plugins:
+    - name: rate-limiting
+      config:
+        minute: 5
+        hour: 50
+        day: 200
+        policy: local
+        hide_client_headers: false
+        fault_tolerant: true
+    - name: request-size-limiting
+      config:
+        allowed_payload_size: 5
+
+# Service-level plugins for authentication
+- service: user-service
+  plugins:
+    - name: jwt
+      config:
+        uri_param_names: ["jwt"]
+        cookie_names: ["jwt"]
+        header_names: ["Authorization"]
+        key_claim_name: "iss"
+        secret_is_base64: false
+        run_on_preflight: true
+
+- service: linkedin-service
+  plugins:
+    - name: jwt
+      config:
+        uri_param_names: ["jwt"]
+        cookie_names: ["jwt"]
+        header_names: ["Authorization"]
+        key_claim_name: "iss"
+        secret_is_base64: false
+        run_on_preflight: true
+
+- service: analytics-service
+  plugins:
+    - name: jwt
+      config:
+        uri_param_names: ["jwt"]
+        cookie_names: ["jwt"]
+        header_names: ["Authorization"]
+        key_claim_name: "iss"
+        secret_is_base64: false
+        run_on_preflight: true
+
+- service: ai-service
+  plugins:
+    - name: jwt
+      config:
+        uri_param_names: ["jwt"]
+        cookie_names: ["jwt"]
+        header_names: ["Authorization"]
+        key_claim_name: "iss"
+        secret_is_base64: false
+        run_on_preflight: true
