@@ -1,0 +1,101 @@
+# Kong with Manager Dashboard - Override for development
+# Use: docker-compose -f docker-compose.yml -f docker-compose.kong-manager.yml up -d
+
+services:
+  # PostgreSQL for Kong (separate from main database)
+  kong-database:
+    image: postgres:15
+    container_name: inergize-kong-db
+    environment:
+      POSTGRES_DB: kong
+      POSTGRES_USER: kong
+      POSTGRES_PASSWORD: kong_password
+    volumes:
+      - kong_db_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"  # Different port to avoid conflict
+    networks:
+      - inergize-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kong -d kong"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kong Database Migration
+  kong-migration:
+    image: kong:3.4
+    container_name: inergize-kong-migration
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_DATABASE: kong
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong_password
+    command: kong migrations bootstrap
+    networks:
+      - inergize-network
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    restart: "no"
+
+  # Kong API Gateway with Manager (overrides the one in main docker-compose.yml)
+  kong:
+    image: kong:3.4
+    container_name: inergize-kong-with-manager
+    environment:
+      # Database configuration
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_DATABASE: kong
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong_password
+      
+      # Kong Manager configuration (enables web UI)
+      KONG_ADMIN_GUI_LISTEN: 0.0.0.0:8002
+      KONG_ADMIN_GUI_URL: http://localhost:8002
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      
+      # Proxy configuration
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_PROXY_LISTEN_SSL: 0.0.0.0:8443
+      
+      # Logging
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      
+      # Development settings (disable auth for simplicity)
+      KONG_ADMIN_GUI_AUTH: "off"
+      KONG_ENFORCE_RBAC: "off"
+      
+      # Additional stability settings
+      KONG_NGINX_WORKER_PROCESSES: "1"
+      KONG_LOG_LEVEL: "info"
+    ports:
+      - "8000:8000"   # Kong proxy
+      - "8443:8443"   # Kong proxy SSL  
+      - "8001:8001"   # Kong admin API
+      - "8444:8444"   # Kong admin API SSL
+      - "8002:8002"   # Kong Manager UI 🎯 This is the dashboard!
+    networks:
+      - inergize-network
+    depends_on:
+      kong-database:
+        condition: service_healthy
+      kong-migration:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  kong_db_data:
+    driver: local
