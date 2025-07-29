@@ -19,7 +19,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({
   showFooter = true,
   className = ''
 }) => {
-  const { data: session, status } = useSession()
+  const { status } = useSession()
   const isAuthenticated = status === 'authenticated'
 
   return (

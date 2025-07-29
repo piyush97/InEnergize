@@ -57,7 +57,7 @@ describe('LinkedIn OAuth Flow E2E', () => {
         .post('/api/linkedin/auth/initiate')
         .set('Authorization', `Bearer ${mockJWT}`)
         .send({
-          scopes: ['r_basicprofile', 'r_emailaddress'],
+          scopes: ['profile', 'email', 'openid'],
           redirectUri: 'http://localhost:3000/auth/linkedin/callback'
         });
 
@@ -236,7 +236,7 @@ describe('LinkedIn OAuth Flow E2E', () => {
             .post('/api/linkedin/auth/initiate')
             .set('Authorization', `Bearer ${mockJWT}`)
             .send({
-              scopes: ['r_basicprofile'],
+              scopes: ['profile'],
               redirectUri: `http://localhost:3000/callback-${i}`
             })
         );
@@ -325,7 +325,7 @@ describe('LinkedIn OAuth Flow E2E', () => {
         .set('Authorization', `Bearer ${mockJWT}`)
         .send({
           usePKCE: true,
-          scopes: ['r_basicprofile']
+          scopes: ['profile']
         });
 
       expect(initiateResponse.status).toBe(200);
@@ -400,7 +400,7 @@ describe('LinkedIn OAuth Flow E2E', () => {
             .post('/api/linkedin/auth/initiate')
             .set('Authorization', `Bearer ${mockJWT}`)
             .send({
-              scopes: ['r_basicprofile'],
+              scopes: ['profile'],
               redirectUri: `http://localhost:3000/callback-${i}`
             })
         );

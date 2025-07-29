@@ -9,7 +9,7 @@ import {
   UpdateUserRequest, 
   UpdateProfileRequest, 
   UserSearchQuery, 
-  SubscriptionLevel 
+  SubscriptionTier 
 } from '../types/user';
 
 // Configure multer for file uploads
@@ -466,9 +466,9 @@ export class UserController {
       const searchQuery: UserSearchQuery = {
         q: req.query.q as string,
         email: req.query.email as string,
-        subscriptionLevel: req.query.subscriptionLevel as SubscriptionLevel,
+        subscriptionTier: req.query.subscriptionTier as SubscriptionTier,
         linkedinConnected: req.query.linkedinConnected === 'true',
-        mfaEnabled: req.query.mfaEnabled === 'true',
+        // mfaEnabled removed - not in schema
         emailVerified: req.query.emailVerified === 'true',
         page: parseInt(req.query.page as string) || 1,
         limit: Math.min(parseInt(req.query.limit as string) || 20, 100),
@@ -537,9 +537,9 @@ export class UserController {
       }
 
       const { userId } = req.params;
-      const { subscriptionLevel } = req.body;
+      const { subscriptionTier } = req.body;
 
-      const updatedUser = await this.userService.updateSubscriptionLevel(userId, subscriptionLevel);
+      const updatedUser = await this.userService.updateSubscriptionTier(userId, subscriptionTier);
       if (!updatedUser) {
         res.status(400).json({
           success: false,
@@ -615,5 +615,5 @@ export const searchUsersValidation = [
 ];
 
 export const updateSubscriptionValidation = [
-  body('subscriptionLevel').isIn(['free', 'basic', 'pro', 'enterprise']),
+  body('subscriptionTier').isIn(['free', 'basic', 'pro', 'enterprise']),
 ];

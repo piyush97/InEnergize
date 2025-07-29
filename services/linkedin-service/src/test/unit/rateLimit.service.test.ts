@@ -128,7 +128,7 @@ describe('LinkedInRateLimitService', () => {
         expire: jest.fn().mockReturnThis(),
         exec: jest.fn().mockResolvedValue([[null, 1], [null, 1]])
       };
-      mockRedis.pipeline.mockReturnValue(mockPipeline);
+      mockRedis.pipeline.mockReturnValue(mockPipeline as any);
       mockRedis.lpush.mockResolvedValue(1);
 
       await rateLimitService.recordRequest(userId, '/v2/me', true);

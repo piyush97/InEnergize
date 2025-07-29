@@ -1,0 +1,441 @@
+{
+  "completeProfile": {
+    "id": "complete-profile-123",
+    "firstName": {
+      "localized": { "en_US": "John" },
+      "preferredLocale": { "country": "US", "language": "en" }
+    },
+    "lastName": {
+      "localized": { "en_US": "Doe" },
+      "preferredLocale": { "country": "US", "language": "en" }
+    },
+    "vanityName": "johndoe",
+    "headline": "Senior Software Engineer at Tech Corp | Full-stack Developer | AI Enthusiast",
+    "summary": "Experienced software engineer with 8+ years of expertise in building scalable web applications. Passionate about artificial intelligence, machine learning, and creating innovative solutions that drive business growth. Currently leading a team of 5 developers at Tech Corp, where I've helped increase system performance by 40% and reduce deployment time by 60%.",
+    "profilePicture": {
+      "displayImage": "urn:li:digitalmediaAsset:complete-profile-image",
+      "elements": [
+        {
+          "identifiers": [
+            {
+              "identifier": "https://media.licdn.com/dms/image/complete-profile/400_400/0.jpg",
+              "index": 0,
+              "mediaType": "image/jpeg"
+            }
+          ]
+        }
+      ]
+    },
+    "location": {
+      "countryCode": "us",
+      "postalCode": "10001",
+      "standardizedLocationUrn": "urn:li:standardizedLocationKey:(us,new-york)"
+    },
+    "industry": "Computer Software",
+    "positions": {
+      "elements": [
+        {
+          "id": 123456,
+          "title": "Senior Software Engineer",
+          "companyName": "Tech Corp",
+          "location": "New York, NY",
+          "description": "Leading development of scalable web applications serving 1M+ users. Built microservices architecture that improved system reliability by 35%. Mentoring junior developers and conducting technical interviews.",
+          "startDate": {
+            "month": 3,
+            "year": 2021
+          },
+          "current": true
+        },
+        {
+          "id": 123457,
+          "title": "Full Stack Developer",
+          "companyName": "StartupXYZ",
+          "location": "San Francisco, CA",
+          "description": "Developed MVP that attracted $2M in Series A funding. Built React frontend and Node.js backend with 99.9% uptime. Implemented CI/CD pipeline that reduced deployment time by 80%.",
+          "startDate": {
+            "month": 6,
+            "year": 2019
+          },
+          "endDate": {
+            "month": 2,
+            "year": 2021
+          }
+        }
+      ]
+    },
+    "educations": {
+      "elements": [
+        {
+          "schoolName": "Stanford University",
+          "degreeName": "Master of Science",
+          "fieldOfStudy": "Computer Science",
+          "startDate": {
+            "year": 2017
+          },
+          "endDate": {
+            "year": 2019
+          }
+        },
+        {
+          "schoolName": "UC Berkeley",
+          "degreeName": "Bachelor of Science",
+          "fieldOfStudy": "Computer Science",
+          "startDate": {
+            "year": 2013
+          },
+          "endDate": {
+            "year": 2017
+          }
+        }
+      ]
+    },
+    "skills": {
+      "elements": [
+        {
+          "name": "JavaScript",
+          "standardizedSkillUrn": "urn:li:standardizedSkill:javascript"
+        },
+        {
+          "name": "React",
+          "standardizedSkillUrn": "urn:li:standardizedSkill:react"
+        },
+        {
+          "name": "Node.js",
+          "standardizedSkillUrn": "urn:li:standardizedSkill:nodejs"
+        },
+        {
+          "name": "Python",
+          "standardizedSkillUrn": "urn:li:standardizedSkill:python"
+        },
+        {
+          "name": "Machine Learning",
+          "standardizedSkillUrn": "urn:li:standardizedSkill:machine-learning"
+        }
+      ]
+    },
+    "completenessScore": 95,
+    "analytics": {
+      "profileViews": 1250,
+      "searchAppearances": 340,
+      "postViews": 5670,
+      "connectionCount": 850
+    }
+  },
+  "incompleteProfile": {
+    "id": "incomplete-profile-456",
+    "firstName": {
+      "localized": { "en_US": "Jane" },
+      "preferredLocale": { "country": "US", "language": "en" }
+    },
+    "lastName": {
+      "localized": { "en_US": "Smith" },
+      "preferredLocale": { "country": "US", "language": "en" }
+    },
+    "vanityName": "janesmith",
+    "headline": "Marketing Professional",
+    "summary": "",
+    "profilePicture": {
+      "displayImage": null
+    },
+    "location": {
+      "countryCode": "us"
+    },
+    "industry": "Marketing and Advertising",
+    "positions": {
+      "elements": [
+        {
+          "id": 123458,
+          "title": "Marketing Manager",
+          "companyName": "Marketing Co",
+          "location": "Los Angeles, CA",
+          "description": "",
+          "startDate": {
+            "month": 1,
+            "year": 2022
+          },
+          "current": true
+        }
+      ]
+    },
+    "educations": {
+      "elements": []
+    },
+    "skills": {
+      "elements": [
+        {
+          "name": "Marketing",
+          "standardizedSkillUrn": "urn:li:standardizedSkill:marketing"
+        }
+      ]
+    },
+    "completenessScore": 45,
+    "analytics": {
+      "profileViews": 125,
+      "searchAppearances": 34,
+      "postViews": 567,
+      "connectionCount": 150
+    },
+    "missingFields": [
+      "summary",
+      "profilePicture",
+      "education",
+      "skills",
+      "location_details",
+      "position_descriptions"
+    ]
+  },
+  "newProfile": {
+    "id": "new-profile-789",
+    "firstName": {
+      "localized": { "en_US": "Alex" },
+      "preferredLocale": { "country": "US", "language": "en" }
+    },
+    "lastName": {
+      "localized": { "en_US": "Wilson" },
+      "preferredLocale": { "country": "US", "language": "en" }
+    },
+    "vanityName": "alexwilson",
+    "headline": "",
+    "summary": "",
+    "profilePicture": {
+      "displayImage": null
+    },
+    "location": {
+      "countryCode": "us"
+    },
+    "industry": "",
+    "positions": {
+      "elements": []
+    },
+    "educations": {
+      "elements": []
+    },
+    "skills": {
+      "elements": []
+    },
+    "completenessScore": 15,
+    "analytics": {
+      "profileViews": 0,
+      "searchAppearances": 0,
+      "postViews": 0,
+      "connectionCount": 0
+    },
+    "missingFields": [
+      "headline",
+      "summary",
+      "profilePicture",
+      "industry",
+      "positions",
+      "education",
+      "skills",
+      "location_details"
+    ]
+  },
+  "automationProfile": {
+    "id": "automation-profile-101",
+    "firstName": {
+      "localized": { "en_US": "Sarah" },
+      "preferredLocale": { "country": "US", "language": "en" }
+    },
+    "lastName": {
+      "localized": { "en_US": "Wilson" },
+      "preferredLocale": { "country": "US", "language": "en" }
+    },
+    "vanityName": "sarahwilson",
+    "headline": "Digital Marketing Specialist | Content Creator | LinkedIn Growth Expert",
+    "summary": "Helping businesses grow their LinkedIn presence through strategic content marketing and automation. Achieved 300% follower growth for clients in the past year. Specializing in B2B lead generation and thought leadership development.",
+    "profilePicture": {
+      "displayImage": "urn:li:digitalmediaAsset:automation-profile-image",
+      "elements": [
+        {
+          "identifiers": [
+            {
+              "identifier": "https://media.licdn.com/dms/image/automation-profile/400_400/0.jpg",
+              "index": 0,
+              "mediaType": "image/jpeg"
+            }
+          ]
+        }
+      ]
+    },
+    "location": {
+      "countryCode": "us",
+      "postalCode": "80201",
+      "standardizedLocationUrn": "urn:li:standardizedLocationKey:(us,denver)"
+    },
+    "industry": "Marketing and Advertising",
+    "positions": {
+      "elements": [
+        {
+          "id": 123459,
+          "title": "Digital Marketing Specialist",
+          "companyName": "Growth Agency",
+          "location": "Denver, CO",
+          "description": "Managing LinkedIn marketing campaigns for 15+ B2B clients. Developed automation strategies that increased lead generation by 150%. Created content calendar system that improved engagement rates by 75%.",
+          "startDate": {
+            "month": 1,
+            "year": 2023
+          },
+          "current": true
+        }
+      ]
+    },
+    "completenessScore": 88,
+    "analytics": {
+      "profileViews": 2100,
+      "searchAppearances": 680,
+      "postViews": 12400,
+      "connectionCount": 1250
+    },
+    "automationSettings": {
+      "connectionRequests": {
+        "enabled": true,
+        "dailyLimit": 10,
+        "currentCount": 3,
+        "lastReset": "2024-01-15T00:00:00.000Z"
+      },
+      "likes": {
+        "enabled": true,
+        "dailyLimit": 20,
+        "currentCount": 7,
+        "lastReset": "2024-01-15T00:00:00.000Z"
+      },
+      "comments": {
+        "enabled": true,
+        "dailyLimit": 5,
+        "currentCount": 1,
+        "lastReset": "2024-01-15T00:00:00.000Z"
+      },
+      "profileViews": {
+        "enabled": true,
+        "dailyLimit": 15,
+        "currentCount": 4,
+        "lastReset": "2024-01-15T00:00:00.000Z"
+      },
+      "safetyScore": 85,
+      "lastActivity": "2024-01-15T10:30:00.000Z"
+    }
+  },
+  "contentCreatorProfile": {
+    "id": "content-creator-profile-202",
+    "firstName": {
+      "localized": { "en_US": "David" },
+      "preferredLocale": { "country": "US", "language": "en" }
+    },
+    "lastName": {
+      "localized": { "en_US": "Brown" },
+      "preferredLocale": { "country": "US", "language": "en" }
+    },
+    "vanityName": "davidbrown",
+    "headline": "Tech Content Creator | Developer Advocate | AI & Machine Learning Enthusiast",
+    "summary": "Creating educational content about artificial intelligence and machine learning for 50K+ developers. Building the future of tech education through engaging tutorials, webinars, and thought leadership articles. Former ML engineer at Fortune 500 companies.",
+    "profilePicture": {
+      "displayImage": "urn:li:digitalmediaAsset:content-creator-image",
+      "elements": [
+        {
+          "identifiers": [
+            {
+              "identifier": "https://media.licdn.com/dms/image/content-creator/400_400/0.jpg",
+              "index": 0,
+              "mediaType": "image/jpeg"
+            }
+          ]
+        }
+      ]
+    },
+    "completenessScore": 92,
+    "analytics": {
+      "profileViews": 8500,
+      "searchAppearances": 2100,
+      "postViews": 45000,
+      "connectionCount": 2750
+    },
+    "contentAnalytics": {
+      "avgEngagementRate": 8.5,
+      "topPerformingPosts": [
+        {
+          "id": "post-1",
+          "title": "The Future of AI in Software Development",
+          "views": 15000,
+          "likes": 850,
+          "comments": 125,
+          "shares": 89
+        },
+        {
+          "id": "post-2",
+          "title": "Machine Learning Best Practices for Beginners",
+          "views": 12000,
+          "likes": 720,
+          "comments": 98,
+          "shares": 156
+        }
+      ],
+      "contentTypes": {
+        "articles": 25,
+        "posts": 180,
+        "carousels": 45,
+        "videos": 12
+      }
+    }
+  },
+  "analyticsProfile": {
+    "id": "analytics-profile-303",
+    "firstName": {
+      "localized": { "en_US": "Emma" },
+      "preferredLocale": { "country": "US", "language": "en" }
+    },
+    "lastName": {
+      "localized": { "en_US": "Davis" },
+      "preferredLocale": { "country": "US", "language": "en" }
+    },
+    "vanityName": "emmadavis",
+    "headline": "Data Analytics Manager | LinkedIn Growth Strategist | Performance Marketing Expert",
+    "summary": "Leveraging data-driven insights to optimize LinkedIn performance for enterprise clients. Specialist in social media analytics, conversion optimization, and ROI measurement. Helped clients achieve average 250% increase in qualified leads through strategic LinkedIn optimization.",
+    "completenessScore": 96,
+    "analytics": {
+      "profileViews": 3200,
+      "searchAppearances": 890,
+      "postViews": 18500,
+      "connectionCount": 1850,
+      "historicalData": {
+        "last30Days": {
+          "profileViews": 520,
+          "postViews": 2800,
+          "newConnections": 45,
+          "engagementRate": 6.2
+        },
+        "last7Days": {
+          "profileViews": 145,
+          "postViews": 850,
+          "newConnections": 12,
+          "engagementRate": 7.1
+        },
+        "yesterday": {
+          "profileViews": 25,
+          "postViews": 120,
+          "newConnections": 2,
+          "engagementRate": 8.5
+        }
+      },
+      "trends": {
+        "profileViewsGrowth": 15.5,
+        "engagementGrowth": 22.3,
+        "connectionGrowth": 8.7,
+        "contentPerformanceGrowth": 18.9
+      },
+      "topPerformingContent": [
+        {
+          "type": "post",
+          "title": "LinkedIn Analytics Best Practices",
+          "metrics": {
+            "views": 5200,
+            "likes": 340,
+            "comments": 67,
+            "shares": 89,
+            "clickThroughRate": 4.2
+          }
+        }
+      ]
+    }
+  }
+}

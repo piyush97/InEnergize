@@ -1,0 +1,126 @@
+# Simplified Kong Configuration for InErgize Platform
+_format_version: "3.0"
+
+# Define upstream services - simplified without problematic healthchecks
+upstreams:
+  - name: auth-service
+    targets:
+      - target: host.docker.internal:3001
+        weight: 100
+
+  - name: user-service
+    targets:
+      - target: inergize-user-service:3002
+        weight: 100
+
+  - name: linkedin-service
+    targets:
+      - target: host.docker.internal:3003
+        weight: 100
+
+  - name: analytics-service
+    targets:
+      - target: host.docker.internal:3004
+        weight: 100
+
+# Define services
+services:
+  - name: auth-service
+    url: http://auth-service
+    connect_timeout: 10000
+    read_timeout: 10000
+    write_timeout: 10000
+
+  - name: user-service
+    url: http://user-service
+    connect_timeout: 10000
+    read_timeout: 10000
+    write_timeout: 10000
+
+  - name: linkedin-service
+    url: http://linkedin-service
+    connect_timeout: 10000
+    read_timeout: 10000
+    write_timeout: 10000
+
+  - name: analytics-service
+    url: http://analytics-service
+    connect_timeout: 10000
+    read_timeout: 10000
+    write_timeout: 10000
+
+# Define routes
+routes:
+  - name: auth-routes
+    service: auth-service
+    paths:
+      - /api/v1/auth
+    strip_path: false
+    preserve_host: false
+    protocols:
+      - http
+      - https
+
+  - name: user-routes
+    service: user-service
+    paths:
+      - /api/v1/users
+    strip_path: false
+    preserve_host: false
+    protocols:
+      - http
+      - https
+
+  - name: linkedin-routes
+    service: linkedin-service
+    paths:
+      - /api/v1/linkedin
+    strip_path: false
+    preserve_host: false
+    protocols:
+      - http
+      - https
+
+  - name: analytics-routes
+    service: analytics-service
+    paths:
+      - /api/v1/analytics
+    strip_path: false
+    preserve_host: false
+    protocols:
+      - http
+      - https
+
+# Basic plugins
+plugins:
+  - name: cors
+    config:
+      origins:
+        - http://localhost:3000
+        - http://localhost:8000
+      methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - PATCH
+        - OPTIONS
+      headers:
+        - "Accept"
+        - "Accept-Version"
+        - "Content-Length"
+        - "Content-MD5"
+        - "Content-Type"
+        - "Date"
+        - "Authorization"
+      exposed_headers:
+        - "X-Auth-Token"
+      credentials: true
+      max_age: 3600
+
+  - name: rate-limiting
+    config:
+      minute: 100
+      hour: 1000
+      day: 10000
+      policy: local

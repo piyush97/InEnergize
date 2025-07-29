@@ -12,6 +12,7 @@ import promClient from 'prom-client';
 // Import routes and middleware
 import authRoutes from './routes/auth.routes';
 import { authMiddleware } from './middleware/auth.middleware';
+import { databaseService } from './services/database.service';
 
 // Load environment variables
 config();
@@ -129,9 +130,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// API routes
-app.use('/auth', authRoutes);
-
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
@@ -154,20 +152,40 @@ app.get('/', (req, res) => {
 });
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'healthy',
-    service: 'auth-service',
-    version: '1.0.0',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development',
-    checks: {
-      database: 'connected',
-      redis: 'connected',
-      rateLimiting: 'active',
-    }
-  });
+app.get('/health', async (req, res) => {
+  try {
+    const dbHealth = await databaseService.healthCheck();
+    
+    res.json({
+      status: dbHealth.status === 'healthy' ? 'healthy' : 'degraded',
+      service: 'auth-service',
+      version: '1.0.0',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'development',
+      checks: {
+        database: dbHealth.status,
+        databaseLatency: dbHealth.latency,
+        redis: 'connected',
+        rateLimiting: 'active',
+      }
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'unhealthy',
+      service: 'auth-service',
+      version: '1.0.0',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'development',
+      checks: {
+        database: 'unhealthy',
+        redis: 'unknown',
+        rateLimiting: 'unknown',
+      },
+      error: 'Database connection failed'
+    });
+  }
 });
 
 // Metrics endpoint for Prometheus
@@ -179,6 +197,9 @@ app.get('/metrics', async (req, res) => {
     res.status(500).end(error);
   }
 });
+
+// API routes
+app.use('/', authRoutes);
 
 // 404 handler
 app.use((req, res) => {
@@ -215,34 +236,50 @@ process.on('uncaughtException', (error) => {
   process.exit(1);
 });
 
-// Start server
-const server = app.listen(PORT, () => {
-  logger.info(`🔐 Auth Service running on port ${PORT}`);
-  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`Metrics available at: http://localhost:${PORT}/metrics`);
-  logger.info(`Health check at: http://localhost:${PORT}/health`);
-});
+// Initialize database connection and start server
+const startServer = async () => {
+  try {
+    // Connect to database
+    await databaseService.connect();
+    logger.info('✅ Database connection established');
 
-// Handle server errors
-server.on('error', (error: any) => {
-  if (error.syscall !== 'listen') {
-    throw error;
+    const server = app.listen(PORT, () => {
+      logger.info(`🔐 Auth Service running on port ${PORT}`);
+      logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+      logger.info(`Metrics available at: http://localhost:${PORT}/metrics`);
+      logger.info(`Health check at: http://localhost:${PORT}/health`);
+    });
+
+    // Handle server errors
+    server.on('error', (error: any) => {
+      if (error.syscall !== 'listen') {
+        throw error;
+      }
+
+      const bind = typeof PORT === 'string' ? 'Pipe ' + PORT : 'Port ' + PORT;
+
+      switch (error.code) {
+        case 'EACCES':
+          logger.error(bind + ' requires elevated privileges');
+          process.exit(1);
+          break;
+        case 'EADDRINUSE':
+          logger.error(bind + ' is already in use');
+          process.exit(1);
+          break;
+        default:
+          throw error;
+      }
+    });
+
+    return server;
+  } catch (error) {
+    logger.error('Failed to start auth service:', error);
+    process.exit(1);
   }
+};
 
-  const bind = typeof PORT === 'string' ? 'Pipe ' + PORT : 'Port ' + PORT;
-
-  switch (error.code) {
-    case 'EACCES':
-      logger.error(bind + ' requires elevated privileges');
-      process.exit(1);
-      break;
-    case 'EADDRINUSE':
-      logger.error(bind + ' is already in use');
-      process.exit(1);
-      break;
-    default:
-      throw error;
-  }
-});
+// Start the server
+startServer();
 
 export default app;

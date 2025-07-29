@@ -3,23 +3,22 @@
 export interface User {
   id: string;
   email: string;
-  firstName: string;
-  lastName: string;
-  subscriptionLevel: SubscriptionLevel;
-  mfaEnabled: boolean;
-  emailVerified: boolean;
-  linkedinConnected: boolean;
-  profileImageUrl?: string;
-  lastLoginAt?: Date;
+  firstName: string | null;
+  lastName: string | null;
+  subscriptionTier: SubscriptionTier;
+  emailVerified: Date | null;
+  hashedPassword: string | null;
+  isActive: boolean;
+  profileImage: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export enum SubscriptionLevel {
-  FREE = 'free',
-  BASIC = 'basic',
-  PRO = 'pro',
-  ENTERPRISE = 'enterprise'
+export enum SubscriptionTier {
+  FREE = 'FREE',
+  BASIC = 'BASIC', 
+  PROFESSIONAL = 'PROFESSIONAL',
+  ENTERPRISE = 'ENTERPRISE'
 }
 
 export interface UserProfile {
@@ -109,7 +108,7 @@ export interface UsersResponse {
 
 export interface SubscriptionUsage {
   userId: string;
-  subscriptionLevel: SubscriptionLevel;
+  subscriptionTier: SubscriptionTier;
   limits: SubscriptionLimits;
   usage: CurrentUsage;
   resetDate: Date;
@@ -151,7 +150,7 @@ export interface UserStats {
     weekly: number;
     monthly: number;
   };
-  subscriptionBreakdown: Record<SubscriptionLevel, number>;
+  subscriptionBreakdown: Record<SubscriptionTier, number>;
   newUsers: {
     today: number;
     thisWeek: number;
@@ -171,14 +170,11 @@ export interface BulkUserOperation {
 export interface UserSearchQuery {
   q?: string; // search query
   email?: string;
-  subscriptionLevel?: SubscriptionLevel;
+  subscriptionTier?: SubscriptionTier;
   linkedinConnected?: boolean;
-  mfaEnabled?: boolean;
   emailVerified?: boolean;
   createdAfter?: Date;
   createdBefore?: Date;
-  lastLoginAfter?: Date;
-  lastLoginBefore?: Date;
   page?: number;
   limit?: number;
   sortBy?: string;
@@ -186,8 +182,8 @@ export interface UserSearchQuery {
 }
 
 // Default subscription limits
-export const SUBSCRIPTION_LIMITS: Record<SubscriptionLevel, SubscriptionLimits> = {
-  [SubscriptionLevel.FREE]: {
+export const SUBSCRIPTION_LIMITS: Record<SubscriptionTier, SubscriptionLimits> = {
+  [SubscriptionTier.FREE]: {
     linkedinConnections: 10,
     aiGenerations: 5,
     scheduledPosts: 3,
@@ -195,7 +191,7 @@ export const SUBSCRIPTION_LIMITS: Record<SubscriptionLevel, SubscriptionLimits> 
     profileAnalyses: 2,
     exportReports: 1,
   },
-  [SubscriptionLevel.BASIC]: {
+  [SubscriptionTier.BASIC]: {
     linkedinConnections: 50,
     aiGenerations: 25,
     scheduledPosts: 15,
@@ -203,7 +199,7 @@ export const SUBSCRIPTION_LIMITS: Record<SubscriptionLevel, SubscriptionLimits> 
     profileAnalyses: 10,
     exportReports: 5,
   },
-  [SubscriptionLevel.PRO]: {
+  [SubscriptionTier.PROFESSIONAL]: {
     linkedinConnections: 200,
     aiGenerations: 100,
     scheduledPosts: 50,
@@ -211,7 +207,7 @@ export const SUBSCRIPTION_LIMITS: Record<SubscriptionLevel, SubscriptionLimits> 
     profileAnalyses: 50,
     exportReports: 20,
   },
-  [SubscriptionLevel.ENTERPRISE]: {
+  [SubscriptionTier.ENTERPRISE]: {
     linkedinConnections: 1000,
     aiGenerations: 500,
     scheduledPosts: 200,

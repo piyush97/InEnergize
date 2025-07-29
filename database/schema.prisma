@@ -41,6 +41,9 @@ model User {
   // Notifications
   notifications     Notification[]
   
+  // AI-Generated Content
+  banners           Banner[]
+  
   @@map("users")
 }
 
@@ -156,6 +159,136 @@ model ContentItem {
   linkedinProfile   LinkedinProfile? @relation(fields: [linkedinProfileId], references: [id])
   
   @@map("content_items")
+}
+
+// AI-Generated Banner Management
+model Banner {
+  id                String      @id @default(cuid())
+  userId            String
+  
+  // Banner metadata
+  name              String?
+  description       String?
+  industry          String
+  style             BannerStyle @default(NATURAL)
+  
+  // Generation data
+  prompt            String      @db.Text
+  dalleModel        String      @default("dall-e-3")
+  generationId      String      @unique
+  
+  // Image data
+  imageUrl          String
+  imageData         String?     @db.Text // base64 encoded
+  format            String      @default("PNG")
+  fileSize          Int
+  dimensions        Json        // {width: 1584, height: 396}
+  
+  // Branding and customization
+  branding          Json?       // Company name, role, colors, etc.
+  textElements      String[]    @default([])
+  colorScheme       String?
+  
+  // Quality and compliance
+  qualityScore      Float       @default(0)
+  isLinkedInCompliant Boolean   @default(true)
+  altTexts          String[]    @default([])
+  
+  // Usage and analytics
+  downloadCount     Int         @default(0)
+  isPublic          Boolean     @default(false)
+  tags              String[]    @default([])
+  
+  // AI usage metrics
+  generationCost    Float       @default(0)
+  tokensUsed        Int         @default(0)
+  
+  // Timestamps
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  lastUsedAt        DateTime?
+  
+  // Relations
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variations        BannerVariation[]
+  
+  @@index([userId, createdAt])
+  @@index([industry])
+  @@index([isPublic])
+  @@map("banners")
+}
+
+// Banner Variations for A/B Testing
+model BannerVariation {
+  id                String      @id @default(cuid())
+  bannerId          String
+  
+  // Variation metadata
+  name              String
+  description       String?
+  variationType     VariationType @default(STYLE)
+  
+  // Generation data
+  prompt            String      @db.Text
+  generationId      String      @unique
+  
+  // Image data
+  imageUrl          String
+  imageData         String?     @db.Text
+  format            String      @default("PNG")
+  fileSize          Int
+  dimensions        Json
+  
+  // Performance metrics
+  qualityScore      Float       @default(0)
+  downloadCount     Int         @default(0)
+  userRating        Float?
+  
+  // Timestamps
+  createdAt         DateTime    @default(now())
+  
+  // Relations
+  banner            Banner      @relation(fields: [bannerId], references: [id], onDelete: Cascade)
+  
+  @@index([bannerId])
+  @@map("banner_variations")
+}
+
+// Banner Templates for Quick Generation
+model BannerTemplate {
+  id                String      @id @default(cuid())
+  
+  // Template metadata
+  name              String
+  description       String
+  industry          String
+  category          TemplateCategory @default(PROFESSIONAL)
+  
+  // Template configuration
+  promptTemplate    String      @db.Text
+  colorSchemes      String[]    @default([])
+  designElements    String[]    @default([])
+  keywords          String[]    @default([])
+  
+  // Template settings
+  isActive          Boolean     @default(true)
+  isPremium         Boolean     @default(false)
+  
+  // Usage metrics
+  usageCount        Int         @default(0)
+  averageRating     Float       @default(0)
+  
+  // Template preview
+  previewImageUrl   String?
+  
+  // Timestamps
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  
+  @@index([industry])
+  @@index([category])
+  @@index([isActive])
+  @@map("banner_templates")
 }
 
 // Automation Rules
@@ -365,4 +498,26 @@ enum NotificationPriority {
   MEDIUM
   HIGH
   URGENT
+}
+
+enum BannerStyle {
+  NATURAL
+  VIVID
+}
+
+enum VariationType {
+  STYLE
+  COLOR
+  TEXT
+  LAYOUT
+  BRANDING
+}
+
+enum TemplateCategory {
+  PROFESSIONAL
+  CREATIVE
+  MINIMALIST
+  CORPORATE
+  STARTUP
+  PERSONAL_BRAND
 }

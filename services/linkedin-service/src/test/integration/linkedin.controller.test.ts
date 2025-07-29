@@ -21,21 +21,31 @@ describe('LinkedInController Integration', () => {
   let mockAPIService: jest.Mocked<LinkedInAPIService>;
   let mockCompletenessService: jest.Mocked<ProfileCompletenessService>;
   let mockRateLimitService: jest.Mocked<LinkedInRateLimitService>;
+  let mockDatabaseService: jest.Mocked<any>;
 
   beforeEach(() => {
     // Create mocked services
-    mockOAuthService = new LinkedInOAuthService({} as any) as jest.Mocked<LinkedInOAuthService>;
+    mockOAuthService = new LinkedInOAuthService() as jest.Mocked<LinkedInOAuthService>;
     mockAPIService = new LinkedInAPIService({} as any) as jest.Mocked<LinkedInAPIService>;
     mockCompletenessService = new ProfileCompletenessService() as jest.Mocked<ProfileCompletenessService>;
     mockRateLimitService = new LinkedInRateLimitService() as jest.Mocked<LinkedInRateLimitService>;
+    
+    // Create mocked database service
+    mockDatabaseService = {
+      getStoredAccessToken: jest.fn(),
+      updateLinkedInAccount: jest.fn(),
+      sendAnalyticsData: jest.fn()
+    };
 
     // Create controller with mocked services
-    controller = new LinkedInController(
-      mockOAuthService,
-      mockAPIService,
-      mockCompletenessService,
-      mockRateLimitService
-    );
+    controller = new LinkedInController();
+    
+    // Inject mocked services
+    (controller as any).oauthService = mockOAuthService;
+    (controller as any).apiService = mockAPIService;
+    (controller as any).completenessService = mockCompletenessService;
+    (controller as any).rateLimitService = mockRateLimitService;
+    (controller as any).databaseService = mockDatabaseService;
 
     // Setup Express app
     app = express();
@@ -57,7 +67,7 @@ describe('LinkedInController Integration', () => {
     app.post('/auth/callback', controller.handleCallback.bind(controller));
     app.get('/profile', controller.getProfile.bind(controller));
     app.post('/profile/sync', controller.syncProfile.bind(controller));
-    app.get('/profile/completeness', controller.getProfileCompleteness.bind(controller));
+    app.get('/profile/completeness', controller.getCompleteness.bind(controller));
     app.get('/rate-limits', controller.getRateLimitStatus.bind(controller));
   });
 
@@ -67,33 +77,27 @@ describe('LinkedInController Integration', () => {
 
   describe('POST /auth/initiate', () => {
     it('should initiate OAuth flow successfully', async () => {
-      const mockAuthResponse = {
-        authUrl: 'https://www.linkedin.com/oauth/v2/authorization?client_id=123&...',
-        state: 'state-123',
-        codeVerifier: 'verifier-123'
-      };
+      const mockAuthUrl = 'https://www.linkedin.com/oauth/v2/authorization?client_id=123&state=state-123&...';
 
-      mockOAuthService.generateAuthUrl.mockResolvedValue(mockAuthResponse);
+      mockOAuthService.generateAuthUrl.mockReturnValue(mockAuthUrl);
 
       const response = await request(app)
         .post('/auth/initiate')
         .send({
-          scopes: ['r_basicprofile', 'r_emailaddress'],
+          scopes: ['profile', 'email', 'openid'],
           redirectUri: 'http://localhost:3000/callback'
         });
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.data.authUrl).toBe(mockAuthResponse.authUrl);
-      expect(response.body.data.state).toBe(mockAuthResponse.state);
-      expect(mockOAuthService.generateAuthUrl).toHaveBeenCalledWith(
-        'test-user-123',
-        ['r_basicprofile', 'r_emailaddress']
-      );
+      expect(response.body.data.authUrl).toBe(mockAuthUrl);
+      expect(mockOAuthService.generateAuthUrl).toHaveBeenCalledWith('test-user-123');
     });
 
     it('should handle OAuth service errors', async () => {
-      mockOAuthService.generateAuthUrl.mockRejectedValue(new Error('OAuth service unavailable'));
+      mockOAuthService.generateAuthUrl.mockImplementation(() => {
+        throw new Error('OAuth service unavailable');
+      });
 
       const response = await request(app)
         .post('/auth/initiate')
@@ -105,10 +109,11 @@ describe('LinkedInController Integration', () => {
     });
 
     it('should handle rate limiting', async () => {
-      mockOAuthService.generateAuthUrl.mockRejectedValue({
-        name: 'RateLimitError',
-        message: 'Rate limit exceeded',
-        retryAfter: 3600
+      mockOAuthService.generateAuthUrl.mockImplementation(() => {
+        const error = new Error('Rate limit exceeded') as any;
+        error.name = 'RateLimitError';
+        error.retryAfter = 3600;
+        throw error;
       });
 
       const response = await request(app)
@@ -123,14 +128,20 @@ describe('LinkedInController Integration', () => {
   describe('POST /auth/callback', () => {
     it('should handle OAuth callback successfully', async () => {
       const mockTokenResponse = {
-        accessToken: 'access-token-123',
-        refreshToken: 'refresh-token-123',
-        expiresIn: 5184000,
-        scope: 'r_basicprofile r_emailaddress'
+        success: true,
+        data: {
+          tokens: {
+            accessToken: 'access-token-123',
+            refreshToken: 'refresh-token-123',
+            expiresIn: 5184000,
+            scope: 'profile email openid'
+          },
+          userId: 'test-user-123'
+        }
       };
 
       mockOAuthService.validateState.mockResolvedValue(true);
-      mockOAuthService.exchangeCodeForTokens.mockResolvedValue(mockTokenResponse);
+      mockOAuthService.exchangeCodeForTokens.mockResolvedValue(mockTokenResponse as any);
 
       const response = await request(app)
         .post('/auth/callback')
@@ -141,8 +152,8 @@ describe('LinkedInController Integration', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.data.accessToken).toBe(mockTokenResponse.accessToken);
-      expect(mockOAuthService.validateState).toHaveBeenCalledWith('state-123', 'test-user-123');
+      expect(response.body.data.accessToken).toBe(mockTokenResponse.data.tokens.accessToken);
+      expect(mockOAuthService.validateState).toHaveBeenCalledWith('state-123');
     });
 
     it('should reject invalid state parameter', async () => {
@@ -174,12 +185,21 @@ describe('LinkedInController Integration', () => {
   describe('GET /profile', () => {
     it('should return user profile successfully', async () => {
       const mockProfile = {
-        id: 'linkedin-123',
-        firstName: 'John',
-        lastName: 'Doe',
-        headline: 'Software Engineer',
-        summary: 'Experienced developer...',
-        emailAddress: 'john@example.com'
+        success: true,
+        data: {
+          id: 'linkedin-123',
+          firstName: {
+            localized: { 'en_US': 'John' },
+            preferredLocale: { country: 'US', language: 'en' }
+          },
+          lastName: {
+            localized: { 'en_US': 'Doe' },
+            preferredLocale: { country: 'US', language: 'en' }
+          },
+          headline: 'Software Engineer',
+          summary: 'Experienced developer...',
+          emailAddress: 'john@example.com'
+        }
       };
 
       mockAPIService.getProfile.mockResolvedValue(mockProfile);
@@ -226,23 +246,220 @@ describe('LinkedInController Integration', () => {
 
   describe('POST /profile/sync', () => {
     it('should sync profile successfully', async () => {
+      const mockProfile = {
+        id: 'linkedin-123',
+        firstName: {
+          localized: { 'en_US': 'John' },
+          preferredLocale: { country: 'US', language: 'en' }
+        },
+        lastName: {
+          localized: { 'en_US': 'Doe' },
+          preferredLocale: { country: 'US', language: 'en' }
+        },
+        headline: 'Senior Software Engineer | Building scalable solutions',
+        summary: 'Experienced software engineer with 5+ years of experience in developing scalable web applications...',
+        industry: 'Information Technology',
+        location: { country: 'US', postalCode: '94102' },
+        profilePicture: {
+          displayImage: 'urn:li:digitalmediaAsset:profile-pic',
+          'displayImage~': { elements: [{ identifiers: [{ identifier: 'profile.jpg' }] }] }
+        },
+        positions: [
+          {
+            id: 'pos-1',
+            title: 'Senior Software Engineer',
+            company: { name: 'Tech Corp', id: 'tech-corp-123' },
+            startDate: { year: 2020, month: 1 },
+            isCurrent: true
+          }
+        ],
+        skills: [
+          { name: 'JavaScript', endorsementCount: 15 },
+          { name: 'React', endorsementCount: 12 }
+        ],
+        connectionCount: 500
+      };
+
+      const mockCompleteness = {
+        score: 85,
+        breakdown: {
+          basicInfo: 100,
+          headline: 90,
+          summary: 85,
+          experience: 90,
+          skills: 80
+        },
+        suggestions: ['Add more skills to improve discoverability'],
+        missingFields: [],
+        priorityImprovements: []
+      };
+
       const mockSyncResult = {
         success: true,
-        updatedFields: ['headline', 'summary', 'positions'],
-        profileData: {
-          id: 'linkedin-123',
-          firstName: 'John',
-          lastName: 'Doe'
+        profile: mockProfile,
+        completeness: mockCompleteness,
+        analytics: {
+          profileViews: 45,
+          searchAppearances: 23,
+          connectionRequests: 3
         }
       };
 
-      mockAPIService.syncProfile.mockResolvedValue(mockSyncResult);
+      mockAPIService.getComprehensiveProfile.mockResolvedValue({
+        success: true,
+        data: mockProfile
+      });
+
+      mockAPIService.getProfileAnalytics.mockResolvedValue({
+        success: true,
+        data: {
+          profileViews: 45,
+          searchAppearances: 23,
+          connectionRequests: 3
+        }
+      });
+
+      mockCompletenessService.calculateCompleteness.mockReturnValue(mockCompleteness);
+      mockDatabaseService.updateLinkedInAccount.mockResolvedValue(true);
+      mockDatabaseService.sendAnalyticsData.mockResolvedValue(true);
+      mockDatabaseService.getStoredAccessToken.mockResolvedValue('valid-access-token');
+      mockAPIService.validateToken.mockResolvedValue(true);
 
       const response = await request(app)
         .post('/profile/sync')
-        .send({
-          forceSync: true
-        });
+        .send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.profile).toEqual(mockProfile);
+      expect(response.body.data.completeness.score).toBe(85);
+      expect(response.body.data.analytics).toBeDefined();
+      expect(response.body.data.syncedAt).toBeDefined();
+      expect(response.body.data.nextSyncRecommended).toBeDefined();
+    });
+
+    it('should handle missing access token', async () => {
+      mockDatabaseService.getStoredAccessToken.mockResolvedValue(null);
+
+      const response = await request(app)
+        .post('/profile/sync')
+        .send({});
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.code).toBe('TOKEN_REQUIRED');
+      expect(response.body.message).toContain('LinkedIn access token required');
+    });
+
+    it('should handle invalid access token', async () => {
+      mockDatabaseService.getStoredAccessToken.mockResolvedValue('invalid-token');
+      mockAPIService.validateToken.mockResolvedValue(false);
+
+      const response = await request(app)
+        .post('/profile/sync')
+        .send({});
+
+      expect(response.status).toBe(401);
+      expect(response.body.success).toBe(false);
+      expect(response.body.code).toBe('INVALID_TOKEN');
+      expect(response.body.message).toContain('Invalid or expired LinkedIn access token');
+    });
+
+    it('should handle LinkedIn API errors', async () => {
+      const linkedinError = {
+        success: false,
+        error: {
+          message: 'Rate limit exceeded',
+          code: 'RATE_LIMITED',
+          userMessage: 'You\'ve made too many requests. Please wait before trying again.',
+          httpStatus: 429
+        }
+      };
+
+      mockDatabaseService.getStoredAccessToken.mockResolvedValue('valid-token');
+      mockAPIService.validateToken.mockResolvedValue(true);
+      mockAPIService.getComprehensiveProfile.mockResolvedValue(linkedinError);
+
+      const response = await request(app)
+        .post('/profile/sync')
+        .send({});
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toEqual(linkedinError.error);
+    });
+
+    it('should calculate enhanced profile completeness', async () => {
+      const mockProfile = {
+        id: 'linkedin-123',
+        firstName: 'Jane',
+        lastName: 'Smith',
+        headline: 'Expert Product Manager | Driving innovation in FinTech',
+        summary: 'Passionate product manager with expertise in financial technology, user experience design, and data-driven decision making. Proven track record of launching successful products.',
+        industryName: 'Financial Services',
+        locationName: 'New York, NY',
+        profilePicture: 'https://example.com/profile.jpg',
+        positions: [
+          {
+            id: 'pos-1',
+            title: 'Senior Product Manager',
+            company: { name: 'FinTech Innovations', id: 'fintech-123' },
+            startDate: '2021-03',
+            isCurrent: true,
+            description: 'Leading product strategy for mobile banking solutions'
+          }
+        ],
+        skills: [
+          { id: 'skill-1', name: 'Product Management', endorsementCount: 25 },
+          { id: 'skill-2', name: 'Agile', endorsementCount: 18 },
+          { id: 'skill-3', name: 'Data Analysis', endorsementCount: 15 }
+        ],
+        educations: [
+          {
+            id: 'edu-1',
+            schoolName: 'Stanford University',
+            degree: 'MBA',
+            fieldOfStudy: 'Business Administration',
+            startDate: '2018-09',
+            endDate: '2020-06'
+          }
+        ],
+        certifications: [
+          {
+            id: 'cert-1',
+            name: 'Certified Product Manager',
+            authority: 'Product Management Institute',
+            startDate: '2021-01'
+          }
+        ],
+        languages: [
+          { id: 'lang-1', name: 'English', proficiency: 'Native' },
+          { id: 'lang-2', name: 'Spanish', proficiency: 'Professional' }
+        ],
+        connectionCount: 750,
+        vanityName: 'jane-smith-pm',
+        publicProfileUrl: 'https://linkedin.com/in/jane-smith-pm'
+      };
+
+      mockDatabaseService.getStoredAccessToken.mockResolvedValue('valid-token');
+      mockAPIService.validateToken.mockResolvedValue(true);
+      mockAPIService.getComprehensiveProfile.mockResolvedValue({
+        success: true,
+        data: mockProfile
+      });
+
+      // Use actual completeness service for testing
+      const actualCompletenessService = new ProfileCompletenessService();
+      const completeness = actualCompletenessService.calculateCompleteness(mockProfile, 750);
+
+      expect(completeness.score).toBeGreaterThan(80); // Should be high due to complete profile
+      expect(completeness.breakdown.basicInfo).toBeGreaterThan(80);
+      expect(completeness.breakdown.headline).toBeGreaterThan(80); // Enhanced headline with keywords
+      expect(completeness.breakdown.summary).toBeGreaterThan(80); // Keywords and call to action
+      expect(completeness.suggestions).toBeInstanceOf(Array);
+      expect(completeness.priorityImprovements).toBeInstanceOf(Array);
+    });
+  });
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -250,7 +467,7 @@ describe('LinkedInController Integration', () => {
     });
 
     it('should handle sync conflicts', async () => {
-      mockAPIService.syncProfile.mockRejectedValue({
+      mockAPIService.getComprehensiveProfile.mockRejectedValue({
         name: 'SyncConflictError',
         message: 'Profile has been modified since last sync',
         conflictingFields: ['headline', 'summary']
@@ -267,25 +484,38 @@ describe('LinkedInController Integration', () => {
   describe('GET /profile/completeness', () => {
     it('should return profile completeness score', async () => {
       const mockProfile = {
-        firstName: 'John',
-        lastName: 'Doe',
-        headline: 'Software Engineer'
+        success: true,
+        data: {
+          firstName: 'John',
+          lastName: 'Doe',
+          headline: 'Software Engineer'
+        }
       };
       const mockCompletenessResult = {
         score: 65,
         breakdown: {
           basicInfo: 15,
-          contactInfo: 10,
-          experience: 20,
-          education: 0,
+          headline: 10,
+          summary: 20,
+          experience: 0,
+          education: 10,
           skills: 10,
-          media: 10
+          profilePicture: 4,
+          connections: 4,
+          certifications: 0,
+          languages: 0,
+          projects: 0,
+          volunteerWork: 0,
+          recommendations: 0,
+          customUrl: 0
         },
         suggestions: [
           'Add professional summary',
           'Include work experience',
           'Add education background'
-        ]
+        ],
+        missingFields: ['Professional Summary', 'Work Experience'],
+        priorityImprovements: []
       };
 
       mockAPIService.getProfile.mockResolvedValue(mockProfile);
@@ -319,23 +549,22 @@ describe('LinkedInController Integration', () => {
   describe('GET /rate-limits', () => {
     it('should return current rate limit status', async () => {
       const mockRateLimits = {
-        oauth: {
-          limit: 20,
-          remaining: 15,
-          resetTime: Date.now() + 3600000,
-          retryAfter: null
-        },
-        api: {
-          limit: 500,
-          remaining: 450,
-          resetTime: Date.now() + 3600000,
-          retryAfter: null
-        },
-        connections: {
-          limit: 100,
-          remaining: 85,
-          resetTime: Date.now() + 86400000,
-          retryAfter: null
+        endpoints: [
+          {
+            endpoint: '/v2/me',
+            hourlyUsage: 5,
+            dailyUsage: 15,
+            hourlyLimit: 40,
+            dailyLimit: 400,
+            remainingHourly: 35,
+            remainingDaily: 385
+          }
+        ],
+        global: {
+          hourlyUsage: 20,
+          dailyUsage: 50,
+          hourlyLimit: 150,
+          dailyLimit: 800
         }
       };
 

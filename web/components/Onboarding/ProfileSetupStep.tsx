@@ -88,7 +88,7 @@ const ProfileSetupStep: React.FC<ProfileSetupStepProps> = ({
 
       toast.success('Profile saved successfully!')
       onComplete()
-    } catch (error) {
+    } catch {
       toast.error('Failed to save profile. Please try again.')
     } finally {
       setIsSubmitting(false)

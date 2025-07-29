@@ -50,7 +50,7 @@ const SignInPage: React.FC = () => {
         toast.success('Welcome back!')
         router.push((callbackUrl as string) || '/dashboard')
       }
-    } catch (_error) {
+    } catch {
       toast.error('Something went wrong. Please try again.')
     } finally {
       setIsLoading(false)

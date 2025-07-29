@@ -1,0 +1,509 @@
+# Kong Production Environment Configuration
+# Maximum security, performance, and compliance for production LinkedIn SaaS
+
+_format_version: "3.0"
+_transform: true
+
+# Production upstream configurations with advanced health checks
+upstreams:
+  - name: auth-service
+    algorithm: consistent-hashing
+    hash_on: header
+    hash_on_header: X-Consumer-ID
+    hash_fallback: ip
+    healthchecks:
+      active:
+        type: https
+        https_verify_certificate: true
+        http_path: /health
+        headers:
+          User-Agent: Kong-Health-Check-Prod
+          Authorization: "Bearer ${HEALTH_CHECK_TOKEN}"
+        timeout: 5
+        concurrency: 5
+        healthy:
+          interval: 10
+          successes: 3
+          http_statuses: [200]
+        unhealthy:
+          interval: 10
+          tcp_failures: 2
+          http_failures: 2
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
+      passive:
+        healthy:
+          successes: 5
+          http_statuses: [200, 201, 202, 204, 301, 302, 304]
+        unhealthy:
+          tcp_failures: 2
+          http_failures: 3
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
+      threshold: 50  # 50% unhealthy threshold
+    targets:
+      - target: auth-service-1.internal:3001
+        weight: 100
+        tags: [primary]
+      - target: auth-service-2.internal:3001
+        weight: 100
+        tags: [secondary]
+
+  - name: user-service
+    algorithm: consistent-hashing
+    hash_on: header
+    hash_on_header: X-Consumer-ID
+    hash_fallback: ip
+    healthchecks:
+      active:
+        type: https
+        https_verify_certificate: true
+        http_path: /health
+        headers:
+          User-Agent: Kong-Health-Check-Prod
+          Authorization: "Bearer ${HEALTH_CHECK_TOKEN}"
+        timeout: 5
+        concurrency: 5
+        healthy:
+          interval: 10
+          successes: 3
+          http_statuses: [200]
+        unhealthy:
+          interval: 10
+          tcp_failures: 2
+          http_failures: 2
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
+      passive:
+        healthy:
+          successes: 5
+          http_statuses: [200, 201, 202, 204, 301, 302, 304]
+        unhealthy:
+          tcp_failures: 2
+          http_failures: 3
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
+      threshold: 50
+    targets:
+      - target: user-service-1.internal:3002
+        weight: 100
+        tags: [primary]
+      - target: user-service-2.internal:3002
+        weight: 100
+        tags: [secondary]
+
+  - name: linkedin-service
+    algorithm: least-connections  # Critical service needs least-connections
+    healthchecks:
+      active:
+        type: https
+        https_verify_certificate: true
+        http_path: /health
+        headers:
+          User-Agent: Kong-Health-Check-Prod
+          Authorization: "Bearer ${HEALTH_CHECK_TOKEN}"
+        timeout: 10
+        concurrency: 3
+        healthy:
+          interval: 20
+          successes: 2
+          http_statuses: [200]
+        unhealthy:
+          interval: 15
+          tcp_failures: 1
+          http_failures: 2
+          timeouts: 1
+          http_statuses: [429, 500, 502, 503, 504]
+      passive:
+        healthy:
+          successes: 3
+          http_statuses: [200, 201, 202, 204]
+        unhealthy:
+          tcp_failures: 1
+          http_failures: 2
+          timeouts: 1
+          http_statuses: [429, 500, 502, 503, 504]
+      threshold: 30  # More sensitive for LinkedIn compliance
+    targets:
+      - target: linkedin-service-1.internal:3003
+        weight: 100
+        tags: [primary]
+      - target: linkedin-service-2.internal:3003
+        weight: 50
+        tags: [backup]  # Lighter backup for compliance
+
+  - name: analytics-service
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: https
+        https_verify_certificate: true
+        http_path: /health
+        headers:
+          User-Agent: Kong-Health-Check-Prod
+          Authorization: "Bearer ${HEALTH_CHECK_TOKEN}"
+        timeout: 5
+        concurrency: 5
+        healthy:
+          interval: 10
+          successes: 3
+          http_statuses: [200]
+        unhealthy:
+          interval: 10
+          tcp_failures: 2
+          http_failures: 2
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
+      passive:
+        healthy:
+          successes: 5
+          http_statuses: [200, 201, 202, 204, 301, 302, 304]
+        unhealthy:
+          tcp_failures: 2
+          http_failures: 3
+          timeouts: 2
+          http_statuses: [429, 500, 502, 503, 504]
+      threshold: 50
+    targets:
+      - target: analytics-service-1.internal:3004
+        weight: 100
+        tags: [primary]
+      - target: analytics-service-2.internal:3004
+        weight: 100
+        tags: [secondary]
+
+# Production consumers with strong authentication
+consumers:
+  - username: inergize-prod-web
+    custom_id: prod-web-001
+    tags:
+      - production
+      - web
+      - verified
+  - username: inergize-prod-mobile
+    custom_id: prod-mobile-001
+    tags:
+      - production
+      - mobile
+      - verified
+  - username: admin-prod
+    custom_id: admin-prod-001
+    tags:
+      - production
+      - admin
+      - privileged
+
+# Production services with maximum security
+services:
+  - name: auth-service
+    host: auth-service-lb.internal
+    port: 443
+    protocol: https
+    ca_certificates: [ca-cert-1]
+    client_certificate: [client-cert-1]
+    retries: 2
+    connect_timeout: 15000
+    write_timeout: 15000
+    read_timeout: 15000
+    routes:
+      - name: auth-public-prod
+        hosts:
+          - api.inergize.com
+        paths:
+          - /api/v1/auth/login
+          - /api/v1/auth/register
+          - /api/v1/auth/forgot-password
+          - /api/v1/auth/reset-password
+        methods:
+          - POST
+        strip_path: false
+        preserve_host: true
+        https_redirect_status_code: 301
+      - name: auth-protected-prod
+        hosts:
+          - api.inergize.com
+        paths:
+          - /api/v1/auth/logout
+          - /api/v1/auth/refresh
+          - /api/v1/auth/profile
+        methods:
+          - POST
+          - GET
+          - PUT
+        strip_path: false
+        preserve_host: true
+        https_redirect_status_code: 301
+    plugins:
+      # WAF protection
+      - name: request-validator
+        config:
+          version: draft4
+          body_schema: |
+            {
+              "type": "object",
+              "properties": {
+                "email": {"type": "string", "format": "email"},
+                "password": {"type": "string", "minLength": 8}
+              }
+            }
+      # Aggressive rate limiting for auth
+      - name: rate-limiting-advanced
+        config:
+          limit:
+            - 30
+          window_size:
+            - 60
+          identifier: consumer
+          sync_rate: 10
+          strategy: redis
+          redis:
+            host: redis-cluster.internal
+            port: 6379
+            database: 0
+            ssl: true
+            ssl_verify: true
+          hide_client_headers: true
+      # Security headers
+      - name: response-transformer-advanced
+        config:
+          add:
+            headers:
+              - "Strict-Transport-Security:max-age=31536000; includeSubDomains; preload"
+              - "X-Content-Type-Options:nosniff"
+              - "X-Frame-Options:DENY"
+              - "X-XSS-Protection:1; mode=block"
+              - "Content-Security-Policy:default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+              - "Referrer-Policy:strict-origin-when-cross-origin"
+          remove:
+            headers:
+              - "Server"
+              - "X-Powered-By"
+      # Strict CORS
+      - name: cors
+        config:
+          origins:
+            - "https://app.inergize.com"
+            - "https://inergize.com"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-CSRF-Token
+          exposed_headers:
+            - X-Request-ID
+          credentials: true
+          max_age: 3600
+
+  - name: linkedin-service
+    host: linkedin-service-lb.internal
+    port: 443
+    protocol: https
+    ca_certificates: [ca-cert-1]
+    client_certificate: [client-cert-1]
+    retries: 1  # Single retry for LinkedIn compliance
+    connect_timeout: 30000
+    write_timeout: 30000
+    read_timeout: 30000
+    routes:
+      - name: linkedin-prod
+        hosts:
+          - api.inergize.com
+        paths:
+          - /api/v1/linkedin
+        strip_path: false
+        preserve_host: true
+        https_redirect_status_code: 301
+    plugins:
+      # JWT with strong validation
+      - name: jwt
+        config:
+          header_names:
+            - authorization
+          claims_to_verify:
+            - exp
+            - iat
+            - nbf
+          key_claim_name: iss
+          secret_is_base64: false
+          run_on_preflight: false
+          maximum_expiration: 3600  # 1 hour max
+      # Extremely conservative rate limiting for LinkedIn
+      - name: rate-limiting-advanced
+        config:
+          limit:
+            - 5      # 5 per minute
+            - 100    # 100 per hour
+            - 1000   # 1000 per day
+          window_size:
+            - 60
+            - 3600
+            - 86400
+          identifier: consumer
+          sync_rate: 5
+          strategy: redis
+          redis:
+            host: redis-cluster.internal
+            port: 6379
+            database: 1
+            ssl: true
+            ssl_verify: true
+          hide_client_headers: true
+      # Circuit breaker for LinkedIn API protection
+      - name: proxy-cache-advanced
+        config:
+          response_code:
+            - 200
+            - 301
+            - 404
+          request_method:
+            - GET
+          content_type:
+            - "application/json"
+          cache_ttl: 300
+          storage_ttl: 3600
+          strategy: redis
+          redis:
+            host: redis-cache.internal
+            port: 6379
+            ssl: true
+      # LinkedIn compliance logging
+      - name: http-log
+        config:
+          http_endpoint: "https://compliance-logs.inergize.com/linkedin"
+          method: POST
+          timeout: 3000
+          keepalive: 10000
+          headers:
+            Content-Type: "application/json"
+            Authorization: "Bearer ${COMPLIANCE_LOG_TOKEN}"
+
+# Production global plugins - maximum security and observability
+plugins:
+  # Advanced security
+  - name: bot-detection
+    config:
+      whitelist: []
+      blacklist:
+        - "curl"
+        - "wget"
+        - "python-requests"
+        - "postman"
+        - "insomnia"
+        - "scrapy"
+        - "selenium"
+      deny: true
+
+  # IP allowlisting for admin endpoints
+  - name: ip-restriction
+    config:
+      allow:
+        - "10.0.0.0/8"      # Internal network
+        - "172.16.0.0/12"   # Docker network
+        - "52.70.0.0/16"    # AWS us-east-1 NAT
+      deny: []
+      message: "Access denied - IP not authorized"
+
+  # Advanced request size limiting
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 5  # 5MB max in production
+      size_unit: megabytes
+      require_content_length: true
+
+  # Comprehensive audit logging
+  - name: http-log
+    config:
+      http_endpoint: "https://audit-logs.inergize.com/api-gateway"
+      method: POST
+      timeout: 5000
+      keepalive: 30000
+      retry_count: 3
+      queue_size: 500
+      flush_timeout: 1
+      headers:
+        Content-Type: "application/json"
+        Authorization: "Bearer ${AUDIT_LOG_TOKEN}"
+        X-Environment: "production"
+
+  # Production monitoring
+  - name: prometheus
+    config:
+      per_consumer: true
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
+
+  # Request correlation and tracing
+  - name: zipkin
+    config:
+      http_endpoint: "https://tracing.inergize.com/api/v2/spans"
+      sample_ratio: 0.1  # 10% sampling in production
+      include_credential: false
+      traceid_byte_count: 16
+      spanid_byte_count: 8
+
+  # Global security headers
+  - name: response-transformer-advanced
+    config:
+      add:
+        headers:
+          - "Strict-Transport-Security:max-age=31536000; includeSubDomains; preload"
+          - "X-Content-Type-Options:nosniff"
+          - "X-Frame-Options:DENY"
+          - "X-XSS-Protection:1; mode=block"
+          - "Content-Security-Policy:default-src 'self'"
+          - "Referrer-Policy:strict-origin-when-cross-origin"
+          - "X-API-Version:v1"
+          - "X-Environment:production"
+      remove:
+        headers:
+          - "Server"
+          - "X-Powered-By"
+          - "X-Kong-Upstream-Latency"
+          - "X-Kong-Proxy-Latency"
+
+# Production certificates (references to actual certs)
+certificates:
+  - cert: "-----BEGIN CERTIFICATE-----\n${PROD_SSL_CERT}\n-----END CERTIFICATE-----"
+    key: "-----BEGIN PRIVATE KEY-----\n${PROD_SSL_KEY}\n-----END PRIVATE KEY-----"
+    id: ssl-cert-1
+    tags: [production, ssl]
+
+ca_certificates:
+  - cert: "${PROD_CA_CERT}"
+    id: ca-cert-1
+    tags: [production, ca]
+
+# Production consumer credentials with rotation
+keyauth_credentials:
+  - consumer: inergize-prod-web
+    key: "${PROD_WEB_API_KEY}"
+    ttl: 2592000  # 30 days
+  - consumer: inergize-prod-mobile
+    key: "${PROD_MOBILE_API_KEY}"
+    ttl: 2592000  # 30 days
+  - consumer: admin-prod
+    key: "${PROD_ADMIN_API_KEY}"
+    ttl: 604800   # 7 days
+
+# Production JWT secrets
+jwt_secrets:
+  - consumer: inergize-prod-web
+    algorithm: RS256
+    rsa_public_key: "${PROD_WEB_JWT_PUBLIC_KEY}"
+    key: prod-web-jwt
+  - consumer: inergize-prod-mobile
+    algorithm: RS256
+    rsa_public_key: "${PROD_MOBILE_JWT_PUBLIC_KEY}"
+    key: prod-mobile-jwt
+  - consumer: admin-prod
+    algorithm: RS256
+    rsa_public_key: "${PROD_ADMIN_JWT_PUBLIC_KEY}"
+    key: prod-admin-jwt

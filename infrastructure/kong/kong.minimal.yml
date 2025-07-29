@@ -1,0 +1,14 @@
+# Minimal Kong Configuration for InErgize Platform
+_format_version: "3.0"
+
+# Define services directly without upstreams
+services:
+  - name: auth-service
+    url: http://host.docker.internal:3001
+
+# Define routes
+routes:
+  - name: auth-routes
+    service: auth-service
+    paths:
+      - /api/v1/auth

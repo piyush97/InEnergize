@@ -1,0 +1,907 @@
+# InErgize Production Deployment Configuration
+# Kubernetes deployment with high availability and auto-scaling
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: inergize-production
+  labels:
+    environment: production
+    project: inergize
+
+---
+# ConfigMap for shared configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inergize-config
+  namespace: inergize-production
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  API_VERSION: "v1"
+  CORS_ORIGINS: "https://inergize.com,https://www.inergize.com,https://app.inergize.com"
+  RATE_LIMIT_WINDOW_MS: "900000"
+  RATE_LIMIT_MAX_REQUESTS: "100"
+  METRICS_ENABLED: "true"
+  PROMETHEUS_PORT: "9090"
+
+---
+# Secret for sensitive data
+apiVersion: v1
+kind: Secret
+metadata:
+  name: inergize-secrets
+  namespace: inergize-production
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql://inergize_user:CHANGE_ME@postgres-service:5432/inergize_production"
+  REDIS_URL: "redis://:CHANGE_ME@redis-service:6379"
+  JWT_ACCESS_SECRET: "CHANGE_ME_32_CHARS_MIN"
+  JWT_REFRESH_SECRET: "CHANGE_ME_32_CHARS_MIN"
+  LINKEDIN_CLIENT_ID: "CHANGE_ME"
+  LINKEDIN_CLIENT_SECRET: "CHANGE_ME"
+  OPENAI_API_KEY: "CHANGE_ME"
+  ANTHROPIC_API_KEY: "CHANGE_ME"
+
+---
+# PostgreSQL StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: inergize-production
+spec:
+  serviceName: postgres-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: inergize_production
+        - name: POSTGRES_USER
+          value: inergize_user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: inergize-secrets
+              key: POSTGRES_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - inergize_user
+            - -d
+            - inergize_production
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - inergize_user
+            - -d
+            - inergize_production
+          initialDelaySeconds: 10
+          periodSeconds: 5
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 50Gi
+      storageClassName: fast-ssd
+
+---
+# TimescaleDB StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: timescale
+  namespace: inergize-production
+spec:
+  serviceName: timescale-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: timescale
+  template:
+    metadata:
+      labels:
+        app: timescale
+    spec:
+      containers:
+      - name: timescale
+        image: timescale/timescaledb:latest-pg15
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: inergize_analytics
+        - name: POSTGRES_USER
+          value: inergize_user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: inergize-secrets
+              key: POSTGRES_PASSWORD
+        - name: TIMESCALEDB_TELEMETRY
+          value: "off"
+        volumeMounts:
+        - name: timescale-storage
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - inergize_user
+            - -d
+            - inergize_analytics
+          initialDelaySeconds: 60
+          periodSeconds: 10
+  volumeClaimTemplates:
+  - metadata:
+      name: timescale-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 100Gi
+      storageClassName: fast-ssd
+
+---
+# Redis StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: inergize-production
+spec:
+  serviceName: redis-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        command:
+        - redis-server
+        - --appendonly
+        - "yes"
+        - --requirepass
+        - "$(REDIS_PASSWORD)"
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: inergize-secrets
+              key: REDIS_PASSWORD
+        volumeMounts:
+        - name: redis-storage
+          mountPath: /data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 10Gi
+
+---
+# Auth Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: inergize-production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+      - name: auth-service
+        image: inergize/auth-service:latest
+        ports:
+        - containerPort: 3001
+        - containerPort: 9090
+        envFrom:
+        - configMapRef:
+            name: inergize-config
+        - secretRef:
+            name: inergize-secrets
+        env:
+        - name: PORT
+          value: "3001"
+        - name: SERVICE_NAME
+          value: "auth-service"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3001
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: logs
+        emptyDir: {}
+
+---
+# User Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: inergize-production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+      - name: user-service
+        image: inergize/user-service:latest
+        ports:
+        - containerPort: 3002
+        - containerPort: 9090
+        envFrom:
+        - configMapRef:
+            name: inergize-config
+        - secretRef:
+            name: inergize-secrets
+        env:
+        - name: PORT
+          value: "3002"
+        - name: SERVICE_NAME
+          value: "user-service"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3002
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3002
+          initialDelaySeconds: 10
+          periodSeconds: 5
+
+---
+# LinkedIn Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: linkedin-service
+  namespace: inergize-production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: linkedin-service
+  template:
+    metadata:
+      labels:
+        app: linkedin-service
+    spec:
+      containers:
+      - name: linkedin-service
+        image: inergize/linkedin-service:latest
+        ports:
+        - containerPort: 3003
+        - containerPort: 9090
+        envFrom:
+        - configMapRef:
+            name: inergize-config
+        - secretRef:
+            name: inergize-secrets
+        env:
+        - name: PORT
+          value: "3003"
+        - name: SERVICE_NAME
+          value: "linkedin-service"
+        - name: LINKEDIN_REDIRECT_URI
+          value: "https://app.inergize.com/auth/linkedin/callback"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "300m"
+          limits:
+            memory: "1Gi"
+            cpu: "800m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3003
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3003
+          initialDelaySeconds: 10
+          periodSeconds: 5
+
+---
+# Analytics Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-service
+  namespace: inergize-production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: analytics-service
+  template:
+    metadata:
+      labels:
+        app: analytics-service
+    spec:
+      containers:
+      - name: analytics-service
+        image: inergize/analytics-service:latest
+        ports:
+        - containerPort: 3004
+        - containerPort: 3007
+        - containerPort: 9090
+        envFrom:
+        - configMapRef:
+            name: inergize-config
+        - secretRef:
+            name: inergize-secrets
+        env:
+        - name: PORT
+          value: "3004"
+        - name: WS_PORT
+          value: "3007"
+        - name: SERVICE_NAME
+          value: "analytics-service"
+        - name: TIMESCALE_HOST
+          value: "timescale-service"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "300m"
+          limits:
+            memory: "1Gi"
+            cpu: "800m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3004
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3004
+          initialDelaySeconds: 20
+          periodSeconds: 5
+
+---
+# AI Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-service
+  namespace: inergize-production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-service
+  template:
+    metadata:
+      labels:
+        app: ai-service
+    spec:
+      containers:
+      - name: ai-service
+        image: inergize/ai-service:latest
+        ports:
+        - containerPort: 3005
+        - containerPort: 9090
+        envFrom:
+        - configMapRef:
+            name: inergize-config
+        - secretRef:
+            name: inergize-secrets
+        env:
+        - name: PORT
+          value: "3005"
+        - name: SERVICE_NAME
+          value: "ai-service"
+        - name: OPENAI_MODEL
+          value: "gpt-4"
+        - name: OPENAI_MAX_TOKENS
+          value: "4000"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "300m"
+          limits:
+            memory: "1Gi"
+            cpu: "800m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3005
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3005
+          initialDelaySeconds: 10
+          periodSeconds: 5
+
+---
+# Kong API Gateway Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kong-gateway
+  namespace: inergize-production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kong-gateway
+  template:
+    metadata:
+      labels:
+        app: kong-gateway
+    spec:
+      containers:
+      - name: kong
+        image: kong:3.4
+        ports:
+        - containerPort: 8000
+        - containerPort: 8001
+        - containerPort: 8443
+        - containerPort: 8444
+        env:
+        - name: KONG_DATABASE
+          value: "off"
+        - name: KONG_DECLARATIVE_CONFIG
+          value: "/kong/declarative/kong.production.yml"
+        - name: KONG_PROXY_ACCESS_LOG
+          value: "/dev/stdout"
+        - name: KONG_ADMIN_ACCESS_LOG
+          value: "/dev/stdout"
+        - name: KONG_PROXY_ERROR_LOG
+          value: "/dev/stderr"
+        - name: KONG_ADMIN_ERROR_LOG
+          value: "/dev/stderr"
+        - name: KONG_ADMIN_LISTEN
+          value: "0.0.0.0:8001"
+        - name: KONG_PROXY_LISTEN
+          value: "0.0.0.0:8000, 0.0.0.0:8443 ssl"
+        volumeMounts:
+        - name: kong-config
+          mountPath: /kong/declarative
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /status
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /status
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: kong-config
+        configMap:
+          name: kong-config
+
+---
+# Services for external access
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: inergize-production
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: timescale-service
+  namespace: inergize-production
+spec:
+  selector:
+    app: timescale
+  ports:
+  - port: 5432
+    targetPort: 5432
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: inergize-production
+spec:
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: inergize-production
+spec:
+  selector:
+    app: auth-service
+  ports:
+  - name: http
+    port: 3001
+    targetPort: 3001
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: inergize-production
+spec:
+  selector:
+    app: user-service
+  ports:
+  - name: http
+    port: 3002
+    targetPort: 3002
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: linkedin-service
+  namespace: inergize-production
+spec:
+  selector:
+    app: linkedin-service
+  ports:
+  - name: http
+    port: 3003
+    targetPort: 3003
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics-service
+  namespace: inergize-production
+spec:
+  selector:
+    app: analytics-service
+  ports:
+  - name: http
+    port: 3004
+    targetPort: 3004
+  - name: websocket
+    port: 3007
+    targetPort: 3007
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-service
+  namespace: inergize-production
+spec:
+  selector:
+    app: ai-service
+  ports:
+  - name: http
+    port: 3005
+    targetPort: 3005
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kong-gateway
+  namespace: inergize-production
+spec:
+  selector:
+    app: kong-gateway
+  ports:
+  - name: proxy
+    port: 8000
+    targetPort: 8000
+  - name: proxy-ssl
+    port: 8443
+    targetPort: 8443
+  - name: admin
+    port: 8001
+    targetPort: 8001
+  - name: admin-ssl
+    port: 8444
+    targetPort: 8444
+  type: LoadBalancer
+
+---
+# Horizontal Pod Autoscalers
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: auth-service-hpa
+  namespace: inergize-production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: auth-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: linkedin-service-hpa
+  namespace: inergize-production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: linkedin-service
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: analytics-service-hpa
+  namespace: inergize-production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analytics-service
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# Network Policies for security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: inergize-network-policy
+  namespace: inergize-production
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector: {}
+  egress:
+  - to:
+    - podSelector: {}
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+
+---
+# Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: auth-service-pdb
+  namespace: inergize-production
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: auth-service
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: linkedin-service-pdb
+  namespace: inergize-production
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: linkedin-service
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: analytics-service-pdb
+  namespace: inergize-production
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: analytics-service

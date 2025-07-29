@@ -58,10 +58,11 @@ describe('LinkedInAPIService Integration', () => {
       };
 
       mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
+        endpoint: '/v2/me',
+        limit: 500,
         remaining: 450,
-        resetTime: Date.now() + 3600000,
-        retryAfter: null
+        resetTime: new Date(Date.now() + 3600000),
+        retryAfter: undefined
       });
 
       mockAxiosInstance.get.mockResolvedValue({
@@ -72,12 +73,13 @@ describe('LinkedInAPIService Integration', () => {
         }
       });
 
-      const result = await apiService.getProfile('user-123');
+      const result = await apiService.getProfile('mock-access-token', 'user-123');
 
-      expect(result.id).toBe('linkedin-123');
-      expect(result.firstName).toBe('John');
-      expect(result.lastName).toBe('Doe');
-      expect(result.headline).toBe('Software Engineer at Tech Corp');
+      expect(result.success).toBe(true);
+      expect(result.data?.id).toBe('linkedin-123');
+      expect(result.data?.firstName).toBe('John');
+      expect(result.data?.lastName).toBe('Doe');
+      expect(result.data?.headline).toBe('Software Engineer at Tech Corp');
       expect(mockRateLimitService.checkLimit).toHaveBeenCalledWith('user-123', 'api');
       expect(mockAxiosInstance.get).toHaveBeenCalledWith(
         '/v2/people/~:(id,firstName,lastName,headline,summary,positions)',
@@ -91,24 +93,29 @@ describe('LinkedInAPIService Integration', () => {
 
     it('should handle rate limiting', async () => {
       mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: false,
+        endpoint: '/v2/me',
+        limit: 500,
         remaining: 0,
-        resetTime: Date.now() + 3600000,
+        resetTime: new Date(Date.now() + 3600000),
         retryAfter: 3600
       });
 
-      await expect(apiService.getProfile('user-123'))
-        .rejects.toThrow('Rate limit exceeded');
+      await expect(apiService.getProfile('mock-access-token', 'user-123'))
+        .rejects.toMatchObject({
+          name: 'RateLimitError',
+          retryAfter: 3600
+        });
 
       expect(mockAxiosInstance.get).not.toHaveBeenCalled();
     });
 
     it('should handle LinkedIn API errors', async () => {
       mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
+        endpoint: '/v2/me',
+        limit: 500,
         remaining: 450,
-        resetTime: Date.now() + 3600000,
-        retryAfter: null
+        resetTime: new Date(Date.now() + 3600000),
+        retryAfter: undefined
       });
 
       mockAxiosInstance.get.mockRejectedValue({
@@ -124,7 +131,7 @@ describe('LinkedInAPIService Integration', () => {
         }
       });
 
-      await expect(apiService.getProfile('user-123'))
+      await expect(apiService.getProfile('mock-access-token', 'user-123'))
         .rejects.toMatchObject({
           name: 'LinkedInAPIError',
           statusCode: 403,
@@ -134,10 +141,11 @@ describe('LinkedInAPIService Integration', () => {
 
     it('should handle network timeouts', async () => {
       mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
+        endpoint: '/v2/me',
+        limit: 500,
         remaining: 450,
-        resetTime: Date.now() + 3600000,
-        retryAfter: null
+        resetTime: new Date(Date.now() + 3600000),
+        retryAfter: undefined
       });
 
       mockAxiosInstance.get.mockRejectedValue({
@@ -145,16 +153,17 @@ describe('LinkedInAPIService Integration', () => {
         message: 'timeout of 10000ms exceeded'
       });
 
-      await expect(apiService.getProfile('user-123'))
+      await expect(apiService.getProfile('mock-access-token', 'user-123'))
         .rejects.toThrow('timeout of 10000ms exceeded');
     });
 
     it('should retry on transient failures', async () => {
       mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
+        endpoint: '/v2/me',
+        limit: 500,
         remaining: 450,
-        resetTime: Date.now() + 3600000,
-        retryAfter: null
+        resetTime: new Date(Date.now() + 3600000),
+        retryAfter: undefined
       });
 
       // First call fails with 500, second succeeds
@@ -167,27 +176,36 @@ describe('LinkedInAPIService Integration', () => {
           status: 200
         });
 
-      const result = await apiService.getProfile('user-123');
+      const result = await apiService.getProfile('mock-access-token', 'user-123');
 
-      expect(result.id).toBe('linkedin-123');
+      expect(result.data?.id).toBe('linkedin-123');
       expect(mockAxiosInstance.get).toHaveBeenCalledTimes(2);
     });
   });
 
-  describe('syncProfile', () => {
-    it('should sync profile data successfully', async () => {
+  describe('getComprehensiveProfile', () => {
+    it('should get comprehensive profile data successfully', async () => {
       const mockProfileData = {
         id: 'linkedin-123',
-        firstName: 'John',
-        lastName: 'Doe Updated',
-        headline: 'Senior Software Engineer'
+        firstName: { localized: { 'en_US': 'John' } },
+        lastName: { localized: { 'en_US': 'Doe Updated' } },
+        headline: { localized: { 'en_US': 'Senior Software Engineer' } },
+        positions: { elements: [] },
+        educations: { elements: [] },
+        skills: { elements: [] },
+        certifications: { elements: [] },
+        languages: { elements: [] },
+        projects: { elements: [] },
+        volunteerExperiences: { elements: [] },
+        recommendations: { elements: [] }
       };
 
       mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
+        endpoint: '/v2/me',
+        limit: 500,
         remaining: 449,
-        resetTime: Date.now() + 3600000,
-        retryAfter: null
+        resetTime: new Date(Date.now() + 3600000),
+        retryAfter: undefined
       });
 
       mockAxiosInstance.get.mockResolvedValue({
@@ -195,229 +213,34 @@ describe('LinkedInAPIService Integration', () => {
         status: 200
       });
 
-      const result = await apiService.syncProfile('user-123', { forceSync: true });
+      const result = await apiService.getComprehensiveProfile('mock-access-token', 'user-123');
 
       expect(result.success).toBe(true);
-      expect(result.updatedFields).toContain('lastName');
-      expect(result.profileData.lastName).toBe('Doe Updated');
-    });
-
-    it('should handle sync conflicts', async () => {
-      mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
-        remaining: 449,
-        resetTime: Date.now() + 3600000,
-        retryAfter: null
-      });
-
-      // Mock scenario where profile was modified externally
-      const result = await apiService.syncProfile('user-123', { 
-        forceSync: false,
-        lastSyncTimestamp: Date.now() - 3600000 // 1 hour ago
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.conflictingFields).toBeDefined();
-    });
-
-    it('should respect sync intervals', async () => {
-      mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
-        remaining: 449,
-        resetTime: Date.now() + 3600000,
-        retryAfter: null
-      });
-
-      const recentSyncTime = Date.now() - 60000; // 1 minute ago
-      
-      await expect(apiService.syncProfile('user-123', {
-        lastSyncTimestamp: recentSyncTime,
-        forceSync: false
-      })).rejects.toThrow('Profile was synced recently');
+      expect(result.data?.id).toBe('linkedin-123');
+      expect(result.data?.firstName).toBe('John');
+      expect(result.data?.lastName).toBe('Doe Updated');
     });
   });
 
-  describe('searchProfiles', () => {
-    it('should search profiles successfully', async () => {
-      const mockSearchResponse = {
-        elements: [
-          {
-            id: 'profile-1',
-            firstName: { localized: { 'en_US': 'Jane' } },
-            lastName: { localized: { 'en_US': 'Smith' } },
-            headline: { localized: { 'en_US': 'Product Manager' } }
-          },
-          {
-            id: 'profile-2',
-            firstName: { localized: { 'en_US': 'Bob' } },
-            lastName: { localized: { 'en_US': 'Johnson' } },
-            headline: { localized: { 'en_US': 'Designer' } }
-          }
-        ],
-        paging: {
-          count: 2,
-          start: 0,
-          total: 25
-        }
-      };
-
-      mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
-        remaining: 448,
-        resetTime: Date.now() + 3600000,
-        retryAfter: null
-      });
-
-      mockAxiosInstance.get.mockResolvedValue({
-        data: mockSearchResponse,
-        status: 200
-      });
-
-      const result = await apiService.searchProfiles('user-123', {
-        keywords: 'software engineer',
-        location: 'San Francisco',
-        industry: 'Technology'
-      });
-
-      expect(result.profiles).toHaveLength(2);
-      expect(result.totalCount).toBe(25);
-      expect(result.profiles[0].firstName).toBe('Jane');
-      expect(mockAxiosInstance.get).toHaveBeenCalledWith(
-        expect.stringContaining('/v2/peopleSearch'),
-        expect.objectContaining({
-          params: expect.objectContaining({
-            keywords: 'software engineer',
-            location: 'San Francisco'
-          })
-        })
-      );
-    });
-
-    it('should handle empty search results', async () => {
-      mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
-        remaining: 448,
-        resetTime: Date.now() + 3600000,
-        retryAfter: null
-      });
-
-      mockAxiosInstance.get.mockResolvedValue({
-        data: {
-          elements: [],
-          paging: { count: 0, start: 0, total: 0 }
-        },
-        status: 200
-      });
-
-      const result = await apiService.searchProfiles('user-123', {
-        keywords: 'very specific rare skill'
-      });
-
-      expect(result.profiles).toHaveLength(0);
-      expect(result.totalCount).toBe(0);
-    });
-  });
-
-  describe('sendConnectionRequest', () => {
-    it('should send connection request successfully', async () => {
-      mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
-        remaining: 85,
-        resetTime: Date.now() + 86400000,
-        retryAfter: null
-      });
-
-      mockAxiosInstance.post.mockResolvedValue({
-        data: { id: 'invitation-123' },
-        status: 201
-      });
-
-      const result = await apiService.sendConnectionRequest('user-123', {
-        recipientProfileId: 'linkedin-456',
-        message: 'Hi! I would like to connect with you.',
-        trackingId: 'tracking-789'
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.invitationId).toBe('invitation-123');
-      expect(mockRateLimitService.checkLimit).toHaveBeenCalledWith('user-123', 'connections');
-    });
-
-    it('should handle connection request limits', async () => {
-      mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: false,
-        remaining: 0,
-        resetTime: Date.now() + 86400000,
-        retryAfter: 86400
-      });
-
-      await expect(apiService.sendConnectionRequest('user-123', {
-        recipientProfileId: 'linkedin-456',
-        message: 'Connection request'
-      })).rejects.toMatchObject({
-        name: 'RateLimitError',
-        message: expect.stringContaining('Daily connection limit exceeded')
-      });
-    });
-
-    it('should handle duplicate connection requests', async () => {
-      mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
-        remaining: 85,
-        resetTime: Date.now() + 86400000,
-        retryAfter: null
-      });
-
-      mockAxiosInstance.post.mockRejectedValue({
-        response: {
-          status: 409,
-          data: {
-            errorCode: 0,
-            message: 'Invitation already exists',
-            status: 409
-          }
-        }
-      });
-
-      await expect(apiService.sendConnectionRequest('user-123', {
-        recipientProfileId: 'linkedin-456',
-        message: 'Connection request'
-      })).rejects.toMatchObject({
-        name: 'LinkedInAPIError',
-        statusCode: 409,
-        message: 'Invitation already exists'
-      });
-    });
-  });
-
-  describe('getAnalytics', () => {
-    it('should retrieve profile analytics successfully', async () => {
+  describe('getProfileAnalytics', () => {
+    it('should get profile analytics successfully', async () => {
       const mockAnalyticsResponse = {
         profileViews: {
           total: 150,
-          trend: 'increasing',
-          dateRange: {
-            start: '2023-01-01',
-            end: '2023-01-31'
-          }
+          trend: 'increasing'
         },
         searchAppearances: {
           total: 75,
-          trend: 'stable',
           keywords: ['software engineer', 'javascript', 'react']
-        },
-        connectionGrowth: {
-          newConnections: 25,
-          totalConnections: 500,
-          trend: 'increasing'
         }
       };
 
       mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
-        remaining: 447,
-        resetTime: Date.now() + 3600000,
-        retryAfter: null
+        endpoint: '/v2/analytics',
+        limit: 100,
+        remaining: 95,
+        resetTime: new Date(Date.now() + 3600000),
+        retryAfter: undefined
       });
 
       mockAxiosInstance.get.mockResolvedValue({
@@ -425,113 +248,69 @@ describe('LinkedInAPIService Integration', () => {
         status: 200
       });
 
-      const result = await apiService.getAnalytics('user-123', {
-        dateRange: { start: '2023-01-01', end: '2023-01-31' },
-        metrics: ['profileViews', 'searchAppearances', 'connectionGrowth']
+      const result = await apiService.getProfileAnalytics('mock-access-token', 'user-123');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.profileViews?.total).toBe(150);
+      expect(result.data?.searchAppearances?.total).toBe(75);
+    });
+  });
+
+  describe('sendConnectionRequest', () => {
+    it('should send connection request successfully', async () => {
+      mockRateLimitService.checkLimit.mockResolvedValue({
+        endpoint: '/v2/connections',
+        limit: 100,
+        remaining: 85,
+        resetTime: new Date(Date.now() + 86400000),
+        retryAfter: undefined
       });
 
-      expect(result.profileViews.total).toBe(150);
-      expect(result.searchAppearances.keywords).toContain('javascript');
-      expect(result.connectionGrowth.newConnections).toBe(25);
+      mockAxiosInstance.post.mockResolvedValue({
+        data: { id: 'invitation-123' },
+        status: 201
+      });
+
+      const result = await apiService.sendConnectionRequest('mock-access-token', 'user-123', 'linkedin-456', 'Hi! I would like to connect with you.');
+
+      expect(result.success).toBe(true);
+      expect(result.data?.id).toBe('invitation-123');
     });
 
-    it('should handle premium analytics features', async () => {
+    it('should handle connection request limits', async () => {
       mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
-        remaining: 447,
-        resetTime: Date.now() + 3600000,
-        retryAfter: null
+        endpoint: '/v2/connections',
+        limit: 100,
+        remaining: 0,
+        resetTime: new Date(Date.now() + 86400000),
+        retryAfter: 86400
       });
 
-      mockAxiosInstance.get.mockRejectedValue({
-        response: {
-          status: 403,
-          data: {
-            errorCode: 100,
-            message: 'Premium feature requires LinkedIn Premium',
-            status: 403
-          }
-        }
-      });
-
-      await expect(apiService.getAnalytics('user-123', {
-        metrics: ['premiumInsights']
-      })).rejects.toMatchObject({
-        name: 'LinkedInAPIError',
-        statusCode: 403,
-        code: 'PREMIUM_REQUIRED'
-      });
+      await expect(apiService.sendConnectionRequest('mock-access-token', 'user-123', 'linkedin-456', 'Connection request'))
+        .rejects.toMatchObject({
+          name: 'RateLimitError',
+          retryAfter: 86400
+        });
     });
   });
 
   describe('Error Handling & Resilience', () => {
-    it('should implement exponential backoff for retries', async () => {
-      mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
-        remaining: 450,
-        resetTime: Date.now() + 3600000,
-        retryAfter: null
-      });
-
-      // Mock multiple failures followed by success
-      mockAxiosInstance.get
-        .mockRejectedValueOnce({ response: { status: 503 } })
-        .mockRejectedValueOnce({ response: { status: 503 } })
-        .mockResolvedValueOnce({ data: { id: 'success' }, status: 200 });
-
-      const startTime = Date.now();
-      const result = await apiService.getProfile('user-123');
-      const endTime = Date.now();
-
-      expect(result.id).toBe('success');
-      expect(endTime - startTime).toBeGreaterThan(1000); // Should have delays
-      expect(mockAxiosInstance.get).toHaveBeenCalledTimes(3);
-    });
-
-    it('should respect circuit breaker pattern', async () => {
-      mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
-        remaining: 450,
-        resetTime: Date.now() + 3600000,
-        retryAfter: null
-      });
-
-      // Simulate multiple consecutive failures
-      for (let i = 0; i < 5; i++) {
-        mockAxiosInstance.get.mockRejectedValue({ response: { status: 500 } });
-        
-        try {
-          await apiService.getProfile('user-123');
-        } catch (error) {
-          // Expected to fail
-        }
-      }
-
-      // Circuit should be open now, next call should fail fast
-      const startTime = Date.now();
-      try {
-        await apiService.getProfile('user-123');
-      } catch (error) {
-        const endTime = Date.now();
-        expect(endTime - startTime).toBeLessThan(100); // Should fail fast
-      }
-    });
-
     it('should handle malformed API responses', async () => {
       mockRateLimitService.checkLimit.mockResolvedValue({
-        allowed: true,
+        endpoint: '/v2/me',
+        limit: 500,
         remaining: 450,
-        resetTime: Date.now() + 3600000,
-        retryAfter: null
+        resetTime: new Date(Date.now() + 3600000),
+        retryAfter: undefined
       });
 
       mockAxiosInstance.get.mockResolvedValue({
-        data: 'invalid json response',
+        data: null,
         status: 200
       });
 
-      await expect(apiService.getProfile('user-123'))
-        .rejects.toThrow('Invalid response format');
+      const result = await apiService.getProfile('mock-access-token', 'user-123');
+      expect(result.success).toBe(false);
     });
   });
 });

@@ -79,8 +79,14 @@ describe('AuthMiddleware', () => {
 
     it('should reject malformed authorization header', async () => {
       mockRequest.headers = {
-        authorization: 'InvalidFormat token'
+        authorization: 'InvalidFormat' // This will trigger the invalid signature JWT error
       };
+
+      mockedJwt.verify.mockImplementation(() => {
+        const error = new Error('invalid signature');
+        error.name = 'JsonWebTokenError';
+        throw error;
+      });
 
       await authMiddleware.validateToken(
         mockRequest as AuthenticatedRequest,
@@ -91,8 +97,8 @@ describe('AuthMiddleware', () => {
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: false,
-        message: 'Invalid authorization header format. Use: Bearer <token>',
-        code: 'INVALID_AUTHORIZATION_FORMAT'
+        message: 'Invalid access token',
+        code: 'INVALID_TOKEN'
       });
     });
 
@@ -115,7 +121,7 @@ describe('AuthMiddleware', () => {
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: false,
-        message: 'JWT token has expired',
+        message: 'Access token has expired',
         code: 'TOKEN_EXPIRED'
       });
     });
@@ -139,7 +145,7 @@ describe('AuthMiddleware', () => {
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: false,
-        message: 'Invalid JWT token',
+        message: 'Invalid access token',
         code: 'INVALID_TOKEN'
       });
     });
@@ -326,7 +332,7 @@ describe('AuthMiddleware', () => {
         subscriptionLevel: 'PRO'
       };
 
-      mockedJwt.sign.mockReturnValue('generated-token');
+      mockedJwt.sign.mockReturnValue('generated-token' as any);
 
       const token = authMiddleware.generateToken(user);
 

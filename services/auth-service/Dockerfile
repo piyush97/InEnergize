@@ -30,6 +30,9 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy source code
 COPY . .
 
+# Generate Prisma client
+RUN npx prisma generate
+
 # Build the application
 RUN npm run build
 
@@ -48,6 +51,8 @@ RUN npm ci --only=production && \
 
 # Copy built application from build stage
 COPY --from=build --chown=inergize:nodejs /app/dist ./dist
+COPY --from=build --chown=inergize:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build --chown=inergize:nodejs /app/prisma ./prisma
 
 # Set proper permissions
 RUN chown -R inergize:nodejs /app

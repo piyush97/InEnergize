@@ -15,6 +15,8 @@ import {
   LinkedInAnalytics,
   LinkedInConnection,
   LinkedInPost,
+  LinkedInEducation,
+  LinkedInSkill,
   RateLimitInfo
 } from '../types/linkedin';
 import { LinkedInRateLimitService } from './rateLimit.service';
@@ -24,8 +26,8 @@ export class LinkedInAPIService {
   private rateLimitService: LinkedInRateLimitService;
   private baseURL = 'https://api.linkedin.com';
 
-  constructor() {
-    this.rateLimitService = new LinkedInRateLimitService();
+  constructor(rateLimitService?: LinkedInRateLimitService) {
+    this.rateLimitService = rateLimitService || new LinkedInRateLimitService();
     
     this.axiosInstance = axios.create({
       baseURL: this.baseURL,
@@ -97,10 +99,14 @@ export class LinkedInAPIService {
       '/v2/me',
       async () => {
         try {
-          const response: AxiosResponse = await this.axiosInstance.get('/v2/me', {
-            headers: { Authorization: `Bearer ${accessToken}` },
-            metadata: { userId, endpoint: '/v2/me' }
-          } as any);
+          // Use proper LinkedIn API v2 endpoint with required fields
+          const response: AxiosResponse = await this.axiosInstance.get(
+            '/v2/me?projection=(id,firstName,lastName,headline,summary,profilePicture(displayImage~:playableStreams),industryName,locationName,publicProfileUrl,vanityName)',
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              metadata: { userId, endpoint: '/v2/me' }
+            } as any
+          );
 
           // Get additional profile data
           const [emailResponse, positionsResponse] = await Promise.all([
@@ -108,10 +114,31 @@ export class LinkedInAPIService {
             this.getPositions(accessToken, userId)
           ]);
 
+          // Parse profile picture properly
+          const profilePicture = this.parseProfilePicture(response.data.profilePicture);
+
           const profile: LinkedInProfile = {
-            ...response.data,
-            emailAddress: emailResponse.data,
-            positions: positionsResponse.data
+            id: response.data.id,
+            firstName: response.data.firstName || {
+              localized: { en_US: '' },
+              preferredLocale: { country: 'US', language: 'en' }
+            },
+            lastName: response.data.lastName || {
+              localized: { en_US: '' },
+              preferredLocale: { country: 'US', language: 'en' }
+            },
+            headline: response.data.headline?.localized?.en_US || response.data.headline || '',
+            summary: response.data.summary?.localized?.en_US || response.data.summary || '',
+            industry: response.data.industryName || '',
+            location: response.data.locationName ? {
+              country: response.data.locationName,
+              postalCode: ''
+            } : undefined,
+            publicProfileUrl: response.data.publicProfileUrl || '',
+            vanityName: response.data.vanityName || '',
+            profilePicture: profilePicture,
+            emailAddress: emailResponse.success ? emailResponse.data : '',
+            positions: positionsResponse.success ? positionsResponse.data : []
           };
 
           return {
@@ -123,6 +150,20 @@ export class LinkedInAPIService {
         }
       }
     );
+  }
+
+  /**
+   * Parse LinkedIn profile picture from API response
+   */
+  private parseProfilePicture(profilePictureData: any): any {
+    if (!profilePictureData?.['displayImage~']?.elements) {
+      return undefined;
+    }
+
+    return {
+      displayImage: profilePictureData.displayImage,
+      'displayImage~': profilePictureData['displayImage~']
+    };
   }
 
   /**
@@ -164,8 +205,9 @@ export class LinkedInAPIService {
       '/v2/positions',
       async () => {
         try {
+          // Use proper LinkedIn API v2 endpoint for positions
           const response: AxiosResponse = await this.axiosInstance.get(
-            '/v2/positions?q=members&projection=(elements*(*,company~(name)))',
+            '/v2/positions?q=members&projection=(elements*(*,company~(name,id,industry,size)))',
             {
               headers: { Authorization: `Bearer ${accessToken}` },
               metadata: { userId, endpoint: '/v2/positions' }
@@ -174,15 +216,17 @@ export class LinkedInAPIService {
 
           const positions = response.data.elements?.map((pos: any) => ({
             id: pos.id,
-            title: pos.title,
+            title: pos.title || '',
             company: {
               name: pos['company~']?.name || pos.companyName || '',
-              id: pos.company || ''
+              id: pos.company || '',
+              industry: pos['company~']?.industry || '',
+              size: pos['company~']?.size || ''
             },
-            location: pos.location,
-            description: pos.description,
-            startDate: pos.startDate,
-            endDate: pos.endDate,
+            location: pos.location?.preferredLocale?.country || pos.location || '',
+            description: pos.description || '',
+            startDate: this.parseLinkedInDate(pos.startDate),
+            endDate: this.parseLinkedInDate(pos.endDate),
             isCurrent: !pos.endDate
           })) || [];
 
@@ -198,16 +242,29 @@ export class LinkedInAPIService {
   }
 
   /**
+   * Parse LinkedIn date format
+   */
+  private parseLinkedInDate(dateObj: any): string {
+    if (!dateObj) return '';
+    const { year, month, day } = dateObj;
+    if (year) {
+      return `${year}${month ? `-${month.toString().padStart(2, '0')}` : ''}${day ? `-${day.toString().padStart(2, '0')}` : ''}`;
+    }
+    return '';
+  }
+
+  /**
    * Get user's education information
    */
-  async getEducation(accessToken: string, userId: string): Promise<LinkedInAPIResponse<LinkedInProfile['educations']>> {
+  async getEducation(accessToken: string, userId: string): Promise<LinkedInAPIResponse<LinkedInEducation[]>> {
     return this.rateLimitService.executeWithRateLimit(
       userId,
       '/v2/educations',
       async () => {
         try {
+          // Use proper LinkedIn API v2 endpoint for education
           const response: AxiosResponse = await this.axiosInstance.get(
-            '/v2/educations?q=members&projection=(elements*(*,school~(name)))',
+            '/v2/educations?q=members&projection=(elements*(*,school~(name,schoolName),fieldOfStudy,degree,startDate,endDate,grade,activities,notes))',
             {
               headers: { Authorization: `Bearer ${accessToken}` },
               metadata: { userId, endpoint: '/v2/educations' }
@@ -217,13 +274,13 @@ export class LinkedInAPIService {
           const educations = response.data.elements?.map((edu: any) => ({
             id: edu.id,
             schoolName: edu['school~']?.name || edu.schoolName || '',
-            fieldOfStudy: edu.fieldOfStudy,
-            degree: edu.degree,
-            grade: edu.grade,
-            activities: edu.activities,
-            notes: edu.notes,
-            startDate: edu.startDate,
-            endDate: edu.endDate
+            fieldOfStudy: edu.fieldOfStudy || '',
+            degree: edu.degree || '',
+            startDate: this.parseLinkedInDate(edu.startDate),
+            endDate: this.parseLinkedInDate(edu.endDate),
+            grade: edu.grade || '',
+            activities: edu.activities || '',
+            description: edu.notes || ''
           })) || [];
 
           return {
@@ -240,14 +297,15 @@ export class LinkedInAPIService {
   /**
    * Get user's skills
    */
-  async getSkills(accessToken: string, userId: string): Promise<LinkedInAPIResponse<LinkedInProfile['skills']>> {
+  async getSkills(accessToken: string, userId: string): Promise<LinkedInAPIResponse<LinkedInSkill[]>> {
     return this.rateLimitService.executeWithRateLimit(
       userId,
       '/v2/skills',
       async () => {
         try {
+          // Use proper LinkedIn API v2 endpoint for skills
           const response: AxiosResponse = await this.axiosInstance.get(
-            '/v2/skills?q=members&projection=(elements*(name,endorsementCount))',
+            '/v2/skills?q=members&projection=(elements*(*,skill~(name)))',
             {
               headers: { Authorization: `Bearer ${accessToken}` },
               metadata: { userId, endpoint: '/v2/skills' }
@@ -256,7 +314,7 @@ export class LinkedInAPIService {
 
           const skills = response.data.elements?.map((skill: any) => ({
             id: skill.id,
-            name: skill.name,
+            name: skill['skill~']?.name || skill.name || '',
             endorsementCount: skill.endorsementCount || 0
           })) || [];
 
@@ -446,6 +504,18 @@ export class LinkedInAPIService {
   }
 
   /**
+   * Send connection invitation
+   */
+  async sendConnectionInvitation(
+    accessToken: string,
+    userId: string,
+    targetUserId: string,
+    message?: string
+  ): Promise<LinkedInAPIResponse<void>> {
+    return this.sendConnectionRequest(accessToken, userId, targetUserId, message);
+  }
+
+  /**
    * Send connection request
    */
   async sendConnectionRequest(
@@ -486,14 +556,371 @@ export class LinkedInAPIService {
   }
 
   /**
-   * Get comprehensive profile data
+   * Get user's certifications
+   */
+  async getCertifications(accessToken: string, userId: string): Promise<LinkedInAPIResponse<any[]>> {
+    return this.rateLimitService.executeWithRateLimit(
+      userId,
+      '/v2/certifications',
+      async () => {
+        try {
+          const response: AxiosResponse = await this.axiosInstance.get(
+            '/v2/certifications?q=members&projection=(elements*(*,authority~(name)))',
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              metadata: { userId, endpoint: '/v2/certifications' }
+            } as any
+          );
+
+          const certifications = response.data.elements?.map((cert: any) => ({
+            id: cert.id,
+            name: cert.name,
+            authority: cert['authority~']?.name || cert.authority || '',
+            url: cert.url,
+            licenseNumber: cert.licenseNumber,
+            startDate: cert.startDate,
+            endDate: cert.endDate
+          })) || [];
+
+          return {
+            success: true,
+            data: certifications
+          };
+        } catch (error) {
+          return this.handleError(error, 'Failed to fetch certifications');
+        }
+      }
+    );
+  }
+
+  /**
+   * Get user's languages
+   */
+  async getLanguages(accessToken: string, userId: string): Promise<LinkedInAPIResponse<any[]>> {
+    return this.rateLimitService.executeWithRateLimit(
+      userId,
+      '/v2/languages',
+      async () => {
+        try {
+          const response: AxiosResponse = await this.axiosInstance.get(
+            '/v2/languages?q=members&projection=(elements*(name,proficiency))',
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              metadata: { userId, endpoint: '/v2/languages' }
+            } as any
+          );
+
+          const languages = response.data.elements?.map((lang: any) => ({
+            id: lang.id,
+            name: lang.name,
+            proficiency: lang.proficiency || 'PROFESSIONAL_WORKING'
+          })) || [];
+
+          return {
+            success: true,
+            data: languages
+          };
+        } catch (error) {
+          return this.handleError(error, 'Failed to fetch languages');
+        }
+      }
+    );
+  }
+
+  /**
+   * Get user's projects
+   */
+  async getProjects(accessToken: string, userId: string): Promise<LinkedInAPIResponse<any[]>> {
+    return this.rateLimitService.executeWithRateLimit(
+      userId,
+      '/v2/projects',
+      async () => {
+        try {
+          const response: AxiosResponse = await this.axiosInstance.get(
+            '/v2/projects?q=members&projection=(elements*(*,members*(name)))',
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              metadata: { userId, endpoint: '/v2/projects' }
+            } as any
+          );
+
+          const projects = response.data.elements?.map((project: any) => ({
+            id: project.id,
+            name: project.name,
+            description: project.description,
+            url: project.url,
+            startDate: project.startDate,
+            endDate: project.endDate,
+            members: project.members?.map((member: any) => ({
+              name: member.name,
+              profileUrl: member.profileUrl
+            })) || []
+          })) || [];
+
+          return {
+            success: true,
+            data: projects
+          };
+        } catch (error) {
+          return this.handleError(error, 'Failed to fetch projects');
+        }
+      }
+    );
+  }
+
+  /**
+   * Get user's volunteer experience
+   */
+  async getVolunteerExperience(accessToken: string, userId: string): Promise<LinkedInAPIResponse<any[]>> {
+    return this.rateLimitService.executeWithRateLimit(
+      userId,
+      '/v2/volunteerExperiences',
+      async () => {
+        try {
+          const response: AxiosResponse = await this.axiosInstance.get(
+            '/v2/volunteerExperiences?q=members&projection=(elements*(*,organization~(name)))',
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              metadata: { userId, endpoint: '/v2/volunteerExperiences' }
+            } as any
+          );
+
+          const volunteerExperiences = response.data.elements?.map((volunteer: any) => ({
+            id: volunteer.id,
+            role: volunteer.role,
+            organization: {
+              name: volunteer['organization~']?.name || volunteer.organization?.name || ''
+            },
+            cause: volunteer.cause,
+            description: volunteer.description,
+            startDate: volunteer.startDate,
+            endDate: volunteer.endDate
+          })) || [];
+
+          return {
+            success: true,
+            data: volunteerExperiences
+          };
+        } catch (error) {
+          return this.handleError(error, 'Failed to fetch volunteer experience');
+        }
+      }
+    );
+  }
+
+  /**
+   * Get user's recommendations
+   */
+  async getRecommendations(accessToken: string, userId: string): Promise<LinkedInAPIResponse<any[]>> {
+    return this.rateLimitService.executeWithRateLimit(
+      userId,
+      '/v2/recommendations',
+      async () => {
+        try {
+          const response: AxiosResponse = await this.axiosInstance.get(
+            '/v2/recommendations?q=members&projection=(elements*(*,recommender*(firstName,lastName,headline),recommendee*(firstName,lastName,headline)))',
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              metadata: { userId, endpoint: '/v2/recommendations' }
+            } as any
+          );
+
+          const recommendations = response.data.elements?.map((rec: any) => ({
+            id: rec.id,
+            recommendationType: rec.recommendationType || 'RECEIVED',
+            recommender: rec.recommender ? {
+              firstName: rec.recommender.firstName,
+              lastName: rec.recommender.lastName,
+              headline: rec.recommender.headline
+            } : undefined,
+            recommendee: rec.recommendee ? {
+              firstName: rec.recommendee.firstName,
+              lastName: rec.recommendee.lastName,
+              headline: rec.recommendee.headline
+            } : undefined,
+            text: rec.text || '',
+            createdAt: rec.createdAt ? new Date(rec.createdAt) : new Date()
+          })) || [];
+
+          return {
+            success: true,
+            data: recommendations
+          };
+        } catch (error) {
+          return this.handleError(error, 'Failed to fetch recommendations');
+        }
+      }
+    );
+  }
+
+  /**
+   * Like a LinkedIn post
+   */
+  async likePost(
+    accessToken: string,
+    userId: string,
+    postId: string
+  ): Promise<LinkedInAPIResponse<void>> {
+    return this.rateLimitService.executeWithRateLimit(
+      userId,
+      '/v2/reactions',
+      async () => {
+        try {
+          const reactionData = {
+            actor: `urn:li:person:${userId}`,
+            object: postId,
+            reactionType: 'LIKE'
+          };
+
+          await this.axiosInstance.post(
+            '/v2/reactions',
+            reactionData,
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              metadata: { userId, endpoint: '/v2/reactions' }
+            } as any
+          );
+
+          return { success: true };
+        } catch (error) {
+          return this.handleError(error, 'Failed to like post');
+        }
+      }
+    );
+  }
+
+  /**
+   * Comment on a LinkedIn post
+   */
+  async commentOnPost(
+    accessToken: string,
+    userId: string,
+    postId: string,
+    comment: string
+  ): Promise<LinkedInAPIResponse<void>> {
+    return this.rateLimitService.executeWithRateLimit(
+      userId,
+      '/v2/socialActions',
+      async () => {
+        try {
+          const commentData = {
+            actor: `urn:li:person:${userId}`,
+            object: postId,
+            message: {
+              text: comment
+            }
+          };
+
+          await this.axiosInstance.post(
+            '/v2/socialActions/{postId}/comments',
+            commentData,
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              metadata: { userId, endpoint: '/v2/socialActions' }
+            } as any
+          );
+
+          return { success: true };
+        } catch (error) {
+          return this.handleError(error, 'Failed to comment on post');
+        }
+      }
+    );
+  }
+
+  /**
+   * View a LinkedIn profile
+   */
+  async viewProfile(
+    accessToken: string,
+    userId: string,
+    targetProfileId: string
+  ): Promise<LinkedInAPIResponse<void>> {
+    return this.rateLimitService.executeWithRateLimit(
+      userId,
+      '/v2/people',
+      async () => {
+        try {
+          // LinkedIn doesn't have a direct "view profile" API
+          // This simulates viewing by fetching minimal profile data
+          await this.axiosInstance.get(
+            `/v2/people/(id:${targetProfileId})?projection=(id,firstName,lastName)`,
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              metadata: { userId, endpoint: '/v2/people' }
+            } as any
+          );
+
+          return { success: true };
+        } catch (error) {
+          return this.handleError(error, 'Failed to view profile');
+        }
+      }
+    );
+  }
+
+  /**
+   * Follow a LinkedIn user
+   */
+  async followUser(
+    accessToken: string,
+    userId: string,
+    targetUserId: string
+  ): Promise<LinkedInAPIResponse<void>> {
+    return this.rateLimitService.executeWithRateLimit(
+      userId,
+      '/v2/networkUpdates',
+      async () => {
+        try {
+          const followData = {
+            actor: `urn:li:person:${userId}`,
+            verb: 'FOLLOW',
+            object: `urn:li:person:${targetUserId}`
+          };
+
+          await this.axiosInstance.post(
+            '/v2/people/{person-id}/network-updates',
+            followData,
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              metadata: { userId, endpoint: '/v2/networkUpdates' }
+            } as any
+          );
+
+          return { success: true };
+        } catch (error) {
+          return this.handleError(error, 'Failed to follow user');
+        }
+      }
+    );
+  }
+
+  /**
+   * Get comprehensive profile data including all available fields
    */
   async getComprehensiveProfile(accessToken: string, userId: string): Promise<LinkedInAPIResponse<LinkedInProfile>> {
     try {
-      const [profile, education, skills] = await Promise.all([
+      // Fetch all profile data in parallel
+      const [
+        profile, 
+        education, 
+        skills, 
+        certifications, 
+        languages, 
+        projects, 
+        volunteerExperience, 
+        recommendations,
+        connections
+      ] = await Promise.all([
         this.getProfile(accessToken, userId),
         this.getEducation(accessToken, userId),
-        this.getSkills(accessToken, userId)
+        this.getSkills(accessToken, userId),
+        this.getCertifications(accessToken, userId),
+        this.getLanguages(accessToken, userId),
+        this.getProjects(accessToken, userId),
+        this.getVolunteerExperience(accessToken, userId),
+        this.getRecommendations(accessToken, userId),
+        this.getConnections(accessToken, userId, 0, 10) // Just get count, not all connections
       ]);
 
       if (!profile.success) {
@@ -503,7 +930,13 @@ export class LinkedInAPIService {
       const comprehensiveProfile: LinkedInProfile = {
         ...profile.data!,
         educations: education.success ? education.data : [],
-        skills: skills.success ? skills.data : []
+        skills: skills.success ? skills.data : [],
+        certifications: certifications.success ? certifications.data : [],
+        languages: languages.success ? languages.data : [],
+        projects: projects.success ? projects.data : [],
+        volunteerExperience: volunteerExperience.success ? volunteerExperience.data : [],
+        recommendations: recommendations.success ? recommendations.data : [],
+        connectionCount: connections.success ? connections.data?.length || 0 : 0
       };
 
       return {
@@ -550,40 +983,94 @@ export class LinkedInAPIService {
     }
 
     if (error.response) {
-      // LinkedIn API error
+      // LinkedIn API error with enhanced error mapping
       const status = error.response.status;
       const data = error.response.data;
+      const linkedinErrorCode = data?.error?.code || data?.error || data?.message;
 
       let message = defaultMessage;
       let code = 'LINKEDIN_API_ERROR';
+      let userMessage = 'Unable to complete LinkedIn operation. Please try again.';
 
       switch (status) {
         case 400:
           message = 'Bad request - invalid parameters';
           code = 'BAD_REQUEST';
+          userMessage = 'Invalid request parameters. Please check your data and try again.';
+          
+          // Handle specific LinkedIn 400 errors
+          if (linkedinErrorCode?.includes('INVALID_REQUEST')) {
+            userMessage = 'The request format is invalid. Please contact support.';
+          } else if (linkedinErrorCode?.includes('MISSING_FIELD')) {
+            userMessage = 'Required information is missing. Please complete your profile.';
+          }
           break;
+
         case 401:
           message = 'Unauthorized - invalid or expired access token';
           code = 'UNAUTHORIZED';
+          userMessage = 'Your LinkedIn connection has expired. Please reconnect your account.';
+          
+          if (linkedinErrorCode?.includes('TOKEN_EXPIRED')) {
+            userMessage = 'Your LinkedIn access token has expired. Please reconnect your account.';
+          } else if (linkedinErrorCode?.includes('INVALID_TOKEN')) {
+            userMessage = 'Invalid LinkedIn credentials. Please reconnect your account.';
+          }
           break;
+
         case 403:
           message = 'Forbidden - insufficient permissions';
           code = 'FORBIDDEN';
+          userMessage = 'You don\'t have permission to perform this action. Please check your LinkedIn account permissions.';
+          
+          if (linkedinErrorCode?.includes('INSUFFICIENT_SCOPE')) {
+            userMessage = 'Additional LinkedIn permissions are required. Please reconnect with extended permissions.';
+          } else if (linkedinErrorCode?.includes('ACCESS_DENIED')) {
+            userMessage = 'Access denied. Your LinkedIn account may have restrictions.';
+          }
           break;
+
         case 404:
           message = 'Resource not found';
           code = 'NOT_FOUND';
+          userMessage = 'The requested LinkedIn resource was not found.';
           break;
+
+        case 422:
+          message = 'Unprocessable entity - validation failed';
+          code = 'VALIDATION_ERROR';
+          userMessage = 'The data provided doesn\'t meet LinkedIn\'s requirements. Please review and try again.';
+          break;
+
         case 429:
           message = 'Rate limit exceeded';
           code = 'RATE_LIMITED';
+          userMessage = 'You\'ve made too many requests. Please wait before trying again.';
+          
+          const retryAfter = error.response.headers['retry-after'];
+          if (retryAfter) {
+            const minutes = Math.ceil(parseInt(retryAfter) / 60);
+            userMessage = `Rate limit exceeded. Please wait ${minutes} minute(s) before trying again.`;
+          }
           break;
+
         case 500:
           message = 'LinkedIn server error';
           code = 'SERVER_ERROR';
+          userMessage = 'LinkedIn is experiencing technical difficulties. Please try again later.';
           break;
+
+        case 502:
+        case 503:
+        case 504:
+          message = 'LinkedIn service unavailable';
+          code = 'SERVICE_UNAVAILABLE';
+          userMessage = 'LinkedIn services are temporarily unavailable. Please try again in a few minutes.';
+          break;
+
         default:
           message = data?.message || defaultMessage;
+          userMessage = 'An unexpected error occurred. Please try again or contact support.';
       }
 
       return {
@@ -591,7 +1078,37 @@ export class LinkedInAPIService {
         error: {
           message,
           code,
-          details: data
+          userMessage,
+          httpStatus: status,
+          linkedinError: linkedinErrorCode,
+          details: data,
+          timestamp: new Date().toISOString()
+        }
+      };
+    }
+
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      return {
+        success: false,
+        error: {
+          message: 'Unable to connect to LinkedIn',
+          code: 'CONNECTION_ERROR',
+          userMessage: 'Unable to connect to LinkedIn. Please check your internet connection.',
+          details: error,
+          timestamp: new Date().toISOString()
+        }
+      };
+    }
+
+    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+      return {
+        success: false,
+        error: {
+          message: 'Request timeout',
+          code: 'TIMEOUT_ERROR',
+          userMessage: 'The request took too long. Please try again.',
+          details: error,
+          timestamp: new Date().toISOString()
         }
       };
     }
@@ -602,7 +1119,9 @@ export class LinkedInAPIService {
       error: {
         message: error.message || defaultMessage,
         code: 'NETWORK_ERROR',
-        details: error
+        userMessage: 'A network error occurred. Please check your connection and try again.',
+        details: error,
+        timestamp: new Date().toISOString()
       }
     };
   }

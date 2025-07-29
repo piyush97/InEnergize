@@ -17,10 +17,10 @@ export interface User {
 }
 
 export enum SubscriptionLevel {
-  FREE = 'free',
-  BASIC = 'basic',
-  PRO = 'pro',
-  ENTERPRISE = 'enterprise'
+  FREE = 'FREE',
+  BASIC = 'BASIC',
+  PROFESSIONAL = 'PROFESSIONAL',
+  ENTERPRISE = 'ENTERPRISE'
 }
 
 export enum UserRole {
@@ -38,8 +38,9 @@ export interface LoginRequest {
 export interface RegisterRequest {
   email: string;
   password: string;
-  firstName: string;
-  lastName: string;
+  firstName?: string;
+  lastName?: string;
+  subscriptionLevel?: string;
 }
 
 export interface TokenPair {
