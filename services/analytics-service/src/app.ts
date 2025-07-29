@@ -8,6 +8,7 @@ import { logger } from '@/config/logger';
 import { database } from '@/config/database';
 import { redis } from '@/config/redis';
 import metricsRoutes from '@/routes/metrics.routes';
+import predictiveAnalyticsRoutes from '@/routes/predictiveAnalytics.routes';
 
 // Collect default metrics
 collectDefaultMetrics();
@@ -114,6 +115,7 @@ export class App {
 
     // API routes
     this.app.use('/api/v1/metrics', metricsRoutes);
+    this.app.use('/api/v1/predictions', predictiveAnalyticsRoutes);
 
     // 404 handler
     this.app.use('*', (req, res) => {

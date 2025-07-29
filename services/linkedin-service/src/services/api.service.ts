@@ -504,6 +504,18 @@ export class LinkedInAPIService {
   }
 
   /**
+   * Send connection invitation
+   */
+  async sendConnectionInvitation(
+    accessToken: string,
+    userId: string,
+    targetUserId: string,
+    message?: string
+  ): Promise<LinkedInAPIResponse<void>> {
+    return this.sendConnectionRequest(accessToken, userId, targetUserId, message);
+  }
+
+  /**
    * Send connection request
    */
   async sendConnectionRequest(
@@ -736,6 +748,148 @@ export class LinkedInAPIService {
           };
         } catch (error) {
           return this.handleError(error, 'Failed to fetch recommendations');
+        }
+      }
+    );
+  }
+
+  /**
+   * Like a LinkedIn post
+   */
+  async likePost(
+    accessToken: string,
+    userId: string,
+    postId: string
+  ): Promise<LinkedInAPIResponse<void>> {
+    return this.rateLimitService.executeWithRateLimit(
+      userId,
+      '/v2/reactions',
+      async () => {
+        try {
+          const reactionData = {
+            actor: `urn:li:person:${userId}`,
+            object: postId,
+            reactionType: 'LIKE'
+          };
+
+          await this.axiosInstance.post(
+            '/v2/reactions',
+            reactionData,
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              metadata: { userId, endpoint: '/v2/reactions' }
+            } as any
+          );
+
+          return { success: true };
+        } catch (error) {
+          return this.handleError(error, 'Failed to like post');
+        }
+      }
+    );
+  }
+
+  /**
+   * Comment on a LinkedIn post
+   */
+  async commentOnPost(
+    accessToken: string,
+    userId: string,
+    postId: string,
+    comment: string
+  ): Promise<LinkedInAPIResponse<void>> {
+    return this.rateLimitService.executeWithRateLimit(
+      userId,
+      '/v2/socialActions',
+      async () => {
+        try {
+          const commentData = {
+            actor: `urn:li:person:${userId}`,
+            object: postId,
+            message: {
+              text: comment
+            }
+          };
+
+          await this.axiosInstance.post(
+            '/v2/socialActions/{postId}/comments',
+            commentData,
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              metadata: { userId, endpoint: '/v2/socialActions' }
+            } as any
+          );
+
+          return { success: true };
+        } catch (error) {
+          return this.handleError(error, 'Failed to comment on post');
+        }
+      }
+    );
+  }
+
+  /**
+   * View a LinkedIn profile
+   */
+  async viewProfile(
+    accessToken: string,
+    userId: string,
+    targetProfileId: string
+  ): Promise<LinkedInAPIResponse<void>> {
+    return this.rateLimitService.executeWithRateLimit(
+      userId,
+      '/v2/people',
+      async () => {
+        try {
+          // LinkedIn doesn't have a direct "view profile" API
+          // This simulates viewing by fetching minimal profile data
+          await this.axiosInstance.get(
+            `/v2/people/(id:${targetProfileId})?projection=(id,firstName,lastName)`,
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              metadata: { userId, endpoint: '/v2/people' }
+            } as any
+          );
+
+          return { success: true };
+        } catch (error) {
+          return this.handleError(error, 'Failed to view profile');
+        }
+      }
+    );
+  }
+
+  /**
+   * Follow a LinkedIn user
+   */
+  async followUser(
+    accessToken: string,
+    userId: string,
+    targetUserId: string
+  ): Promise<LinkedInAPIResponse<void>> {
+    return this.rateLimitService.executeWithRateLimit(
+      userId,
+      '/v2/networkUpdates',
+      async () => {
+        try {
+          const followData = {
+            actor: `urn:li:person:${userId}`,
+            verb: 'FOLLOW',
+            object: `urn:li:person:${targetUserId}`
+          };
+
+          await this.axiosInstance.post(
+            '/v2/people/{person-id}/network-updates',
+            followData,
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              metadata: { userId, endpoint: '/v2/networkUpdates' }
+            } as any
+          );
+
+          return { success: true };
+        } catch (error) {
+          return this.handleError(error, 'Failed to follow user');
         }
       }
     );

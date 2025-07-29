@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 import * as promClient from 'prom-client';
 import winston from 'winston';
 import linkedinRoutes from './routes/linkedin.routes';
+import automationRoutes from './routes/automation.routes';
 
 // Initialize Express app
 const app = express();
@@ -193,6 +194,7 @@ app.get('/metrics', (req, res) => {
 
 // API routes
 app.use('/api/linkedin', linkedinRoutes);
+app.use('/api/automation', automationRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

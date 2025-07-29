@@ -152,3 +152,75 @@ export interface MetricAggregation {
   metrics: Record<string, number>;
   source: string;
 }
+
+// Predictive Analytics Types
+export interface PredictionResult {
+  metric: string;
+  currentValue: number;
+  predictedValue: number;
+  confidenceScore: number; // 0-1
+  timeframe: string;
+  trend: 'increasing' | 'decreasing' | 'stable';
+  changePercent: number;
+}
+
+export interface GrowthPrediction {
+  userId: string;
+  timeframe: '7d' | '30d' | '90d';
+  predictions: {
+    profileViews: PredictionResult;
+    connections: PredictionResult;
+    searchAppearances: PredictionResult;
+    engagementRate: PredictionResult;
+  };
+  generatedAt: Date;
+}
+
+export interface OptimizationRecommendation {
+  category: 'profile' | 'content' | 'engagement' | 'networking';
+  priority: 'high' | 'medium' | 'low';
+  title: string;
+  description: string;
+  expectedImpact: string;
+  implementation: 'immediate' | 'short_term' | 'long_term';
+  metrics: string[];
+}
+
+export interface BenchmarkPrediction {
+  metric: string;
+  currentValue: number;
+  industryBenchmark: number;
+  daysToReachBenchmark: number | null;
+  probabilityOfReaching: number; // 0-1
+  requiredGrowthRate: number; // daily percentage
+}
+
+export interface ContentPerformancePrediction {
+  contentType: 'article' | 'post' | 'video' | 'carousel';
+  predictedEngagement: number;
+  bestTimeToPost: string;
+  recommendedTopics: string[];
+  confidenceScore: number;
+}
+
+export interface NetworkGrowthForecast {
+  optimalConnectionTimes: Array<{
+    dayOfWeek: string;
+    hour: number;
+    engagementMultiplier: number;
+  }>;
+  recommendedTargets: Array<{
+    industry: string;
+    connectionPotential: number;
+    reasoning: string;
+  }>;
+  networkHealthScore: number; // 0-100
+}
+
+export interface PredictiveAnalyticsResponse {
+  growthPredictions?: GrowthPrediction;
+  recommendations?: OptimizationRecommendation[];
+  benchmarkPredictions?: BenchmarkPrediction[];
+  contentPredictions?: ContentPerformancePrediction[];
+  networkForecast?: NetworkGrowthForecast;
+}

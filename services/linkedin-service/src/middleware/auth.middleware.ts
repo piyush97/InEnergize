@@ -123,7 +123,7 @@ export class AuthMiddleware {
   /**
    * Check user role authorization
    */
-  requireRole(allowedRoles: string[]): (req: AuthenticatedRequest, res: Response, next: NextFunction) => void {
+  requireRole(allowedRoles: string | string[]): (req: AuthenticatedRequest, res: Response, next: NextFunction) => void {
     return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
       if (!req.user) {
         res.status(401).json({
@@ -134,12 +134,13 @@ export class AuthMiddleware {
         return;
       }
 
-      if (!allowedRoles.includes(req.user.role)) {
+      const rolesArray = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
+      if (!rolesArray.includes(req.user.role)) {
         res.status(403).json({
           success: false,
           message: 'Insufficient permissions for this operation',
           code: 'INSUFFICIENT_PERMISSIONS',
-          requiredRoles: allowedRoles,
+          requiredRoles: rolesArray,
           userRole: req.user.role
         });
         return;
@@ -152,7 +153,7 @@ export class AuthMiddleware {
   /**
    * Check subscription level requirements
    */
-  requireSubscription(minimumLevel: string): (req: AuthenticatedRequest, res: Response, next: NextFunction) => void {
+  requireSubscription(allowedLevels: string | string[]): (req: AuthenticatedRequest, res: Response, next: NextFunction) => void {
     const subscriptionHierarchy = ['FREE', 'BASIC', 'PRO', 'ENTERPRISE'];
     
     return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
@@ -166,16 +167,30 @@ export class AuthMiddleware {
       }
 
       const userLevel = req.user.subscriptionLevel || 'FREE';
+      const levelsArray = Array.isArray(allowedLevels) ? allowedLevels : [allowedLevels];
+      
+      // Check if user level is in allowed levels
+      if (levelsArray.includes(userLevel)) {
+        next();
+        return;
+      }
+      
+      // If not directly allowed, check hierarchical access (for backward compatibility)
       const userLevelIndex = subscriptionHierarchy.indexOf(userLevel);
-      const requiredLevelIndex = subscriptionHierarchy.indexOf(minimumLevel);
-
-      if (userLevelIndex < requiredLevelIndex) {
+      const hasAccess = levelsArray.some(level => {
+        const requiredLevelIndex = subscriptionHierarchy.indexOf(level);
+        return userLevelIndex >= requiredLevelIndex;
+      });
+      
+      if (!hasAccess) {
+        const requiredLevel = levelsArray[0]; // Use first level for error message
         res.status(403).json({
           success: false,
-          message: `This feature requires ${minimumLevel} subscription or higher`,
+          message: `This feature requires ${requiredLevel} subscription or higher`,
           code: 'SUBSCRIPTION_UPGRADE_REQUIRED',
           currentLevel: userLevel,
-          requiredLevel: minimumLevel
+          requiredLevel: requiredLevel,
+          allowedLevels: levelsArray
         });
         return;
       }

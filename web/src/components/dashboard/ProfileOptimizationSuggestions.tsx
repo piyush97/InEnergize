@@ -108,19 +108,57 @@ const ProfileOptimizationSuggestions: React.FC<ProfileOptimizationSuggestionsPro
       setRefreshing(true);
       const token = localStorage.getItem('authToken');
       
-      const response = await fetch('/api/v1/linkedin/profile/optimization-suggestions', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      // Fetch both traditional suggestions and AI-powered recommendations
+      const [suggestionsResponse, predictionsResponse] = await Promise.all([
+        fetch('/api/v1/linkedin/profile/optimization-suggestions', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }),
+        fetch('/api/v1/predictions/recommendations', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        })
+      ]);
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch optimization suggestions');
+      const suggestionsResult = await suggestionsResponse.json();
+      
+      // Handle predictions response gracefully (may not be available for all users)
+      let predictiveRecommendations = [];
+      if (predictionsResponse.ok) {
+        const predictionsResult = await predictionsResponse.json();
+        if (predictionsResult.success) {
+          predictiveRecommendations = predictionsResult.data || [];
+        }
       }
 
-      const result = await response.json();
-      setData(result.data);
+      // Merge traditional suggestions with AI predictions
+      const mergedSuggestions = [
+        ...(suggestionsResult.data?.suggestions || []),
+        ...predictiveRecommendations.map((rec: any, index: number) => ({
+          id: `ai-${index}`,
+          field: rec.category,
+          priority: rec.priority,
+          impact: 25, // Default impact for AI suggestions
+          timeEstimate: rec.implementation === 'immediate' ? '5-10 min' : 
+                       rec.implementation === 'short_term' ? '1-2 hours' : '1-2 days',
+          difficulty: rec.implementation === 'immediate' ? 'easy' : 
+                     rec.implementation === 'short_term' ? 'medium' : 'hard',
+          suggestion: rec.description,
+          category: rec.category,
+          completed: false,
+          aiGenerated: true,
+          expectedImpact: rec.expectedImpact
+        }))
+      ];
+
+      setData({
+        ...suggestionsResult.data,
+        suggestions: mergedSuggestions
+      });
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -449,10 +487,17 @@ const ProfileOptimizationSuggestions: React.FC<ProfileOptimizationSuggestionsPro
                             <span>{suggestion.timeEstimate}</span>
                           </div>
                           {suggestion.aiGenerated && (
-                            <Badge variant="secondary" className="bg-purple-100 text-purple-800">
-                              <Star className="h-3 w-3 mr-1" />
-                              AI Generated
-                            </Badge>
+                            <>
+                              <Badge variant="secondary" className="bg-purple-100 text-purple-800">
+                                <Star className="h-3 w-3 mr-1" />
+                                AI Generated
+                              </Badge>
+                              {(suggestion as any).expectedImpact && (
+                                <div className="text-xs text-green-600 font-medium">
+                                  Expected: {(suggestion as any).expectedImpact}
+                                </div>
+                              )}
+                            </>
                           )}
                         </div>
 
