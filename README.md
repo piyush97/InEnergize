@@ -109,7 +109,7 @@ InErgize follows a microservices architecture pattern with the following core se
 - **Frameworks**: Express.js, NestJS
 - **Databases**: PostgreSQL 14+, TimescaleDB, Redis 6+
 - **Message Queue**: Redis Bull/AWS SQS
-- **API Gateway**: Kong with rate limiting
+- **API Gateway**: Kong Enterprise with advanced security, load balancing, and LinkedIn compliance
 
 **Frontend Applications**
 
@@ -233,22 +233,34 @@ InErgize/
    docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
    ```
 
-5. **Access Services**
+5. **Kong API Gateway Setup**
+
+   ```bash
+   # Deploy Kong with enterprise features (Recommended)
+   ./scripts/kong-production-deploy.sh development
+   
+   # Run comprehensive Kong tests
+   ./scripts/kong-test-suite.sh
+   ```
+
+6. **Access Services**
 
    Once all containers are running, you can access:
 
    - **Web Application**: http://localhost:3000
+   - **Kong API Gateway**: http://localhost:8000 (main proxy)
+   - **Kong Manager Dashboard**: http://localhost:8002 (web UI)
+   - **Kong Admin API**: http://localhost:8001
+   - **Prometheus Metrics**: http://localhost:8001/metrics
    - **Auth Service**: http://localhost:3001/health
    - **User Service**: http://localhost:3002/health
-   - **API Gateway (Kong)**: http://localhost:8000
-   - **Kong Admin**: http://localhost:8001
    - **Kibana (Logs)**: http://localhost:5601
    - **Elasticsearch**: http://localhost:9200
    - **PostgreSQL**: localhost:5432 (user: inergize_user, db: inergize_dev)
    - **TimescaleDB**: localhost:5433 (user: inergize_user, db: inergize_analytics)
    - **Redis**: localhost:6379 (password: inergize_redis_password)
 
-6. **Stop Development Environment**
+7. **Stop Development Environment**
 
    ```bash
    # Stop all services
@@ -269,6 +281,12 @@ docker-compose down                     # Stop all services
 docker-compose restart [service]       # Restart specific service
 docker-compose logs -f [service]       # View service logs
 docker-compose ps                       # Check service status
+
+# Kong API Gateway Management
+./scripts/kong-production-deploy.sh development    # Deploy Kong with enterprise features
+./scripts/kong-test-suite.sh                       # Run comprehensive Kong tests
+curl http://localhost:8002                         # Access Kong Manager dashboard
+curl http://localhost:8001/metrics                 # View Prometheus metrics
 
 # Development Mode (with hot reload)
 docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
@@ -501,6 +519,7 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 - 🟢 **🛡️ Safety Monitoring** - Real-time compliance and emergency controls
 - 🟢 **⚙️ Template Management** - Professional templates with analytics
 - 🟢 **📊 Admin Dashboard** - System-wide safety monitoring and controls
+- 🟢 **🌐 Kong API Gateway** - Enterprise-grade with security, load balancing, and monitoring
 - 🟢 **Database Schema** - Complete with 11 models and relationships
 - 🟢 **Redis Integration** - Session management, caching, automation queues
 - 🟢 **Security Features** - Comprehensive rate limiting, validation, audit logging
@@ -785,8 +804,13 @@ curl http://localhost:3000/api/health          # Web application ✅
 curl http://localhost:3001/health              # Auth service ✅
 curl http://localhost:3002/health              # User service ✅
 
-# Infrastructure Services (All Healthy)
-curl http://localhost:8001/                    # Kong admin API ✅
+# Kong API Gateway (All Healthy)
+curl http://localhost:8000/health              # Kong proxy health ✅
+curl http://localhost:8001/status              # Kong admin status ✅
+curl http://localhost:8002                     # Kong Manager dashboard ✅
+curl http://localhost:8001/metrics             # Kong Prometheus metrics ✅
+
+# Infrastructure Services (All Healthy)  
 curl http://localhost:9200/_cluster/health     # Elasticsearch ✅
 docker exec inergize-postgres pg_isready -U inergize_user -d inergize_dev  # PostgreSQL ✅
 docker exec inergize-redis redis-cli -a inergize_redis_password ping       # Redis ✅
