@@ -1,55 +1,60 @@
 #!/bin/bash
 
-# Kong API Gateway Setup Script for InErgize Platform
-# Automated setup with LinkedIn compliance and enterprise security
+# Kong Manager Setup Script
+# This script sets up Kong with Manager dashboard and migrates declarative config
 
-set -euo pipefail
+set -e
+
+echo "🚀 Setting up Kong with Manager Dashboard..."
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-KONG_DIR="$PROJECT_ROOT/infrastructure/kong"
-ENV_FILE="$KONG_DIR/.env"
-
-# Default values
-ENVIRONMENT=${1:-development}
-FORCE_RECREATE=${2:-false}
-
-# Logging functions
-log_info() {
+# Function to print colored output
+print_status() {
     echo -e "${BLUE}[INFO]${NC} $1"
 }
 
-log_success() {
+print_success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
-log_warning() {
+print_warning() {
     echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
-log_error() {
+print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Check if running as root (not recommended for development)
-check_root() {
-    if [[ $EUID -eq 0 ]] && [[ "$ENVIRONMENT" == "development" ]]; then
-        log_warning "Running as root in development environment. This is not recommended."
-        read -p "Continue anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
-        fi
+# Step 1: Stop existing Kong service
+print_status "Stopping existing Kong service..."
+docker-compose down kong 2>/dev/null || true
+
+# Step 2: Start Kong with Manager
+print_status "Starting Kong with database and Manager..."
+docker-compose -f docker-compose.yml -f docker-compose.kong-manager.yml up -d kong-database
+sleep 10
+
+docker-compose -f docker-compose.yml -f docker-compose.kong-manager.yml up -d kong-migration
+sleep 5
+
+docker-compose -f docker-compose.yml -f docker-compose.kong-manager.yml up -d kong
+
+# Step 3: Wait for Kong to be ready
+print_status "Waiting for Kong to be ready..."
+for i in {1..30}; do
+    if curl -s http://localhost:8001/status > /dev/null 2>&1; then
+        print_success "Kong is ready!"
+        break
     fi
-}
+    echo -n "."
+    sleep 2
+done
 
 # Check prerequisites
 check_prerequisites() {
