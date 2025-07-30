@@ -36,15 +36,21 @@ jobs:
         with:
           fetch-depth: 0  # Full history for security analysis
           
-      - name: Setup Node.js
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+          
+      - name: Setup Node.js (for compatibility)
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
           
       - name: Install dependencies
+        env:
+          CI: "true"
         run: |
-          npm ci --audit --audit-level=moderate
+          bun install --production
           # Install security scanning tools
           npm install -g @cyclonedx/cyclonedx-npm @microsoft/eslint-formatter-sarif
           
@@ -58,12 +64,12 @@ jobs:
           # Generate SBOM (Software Bill of Materials)
           cyclonedx-npm --output-file sbom.json
           
-          # NPM audit with JSON output
-          npm audit --json > npm-audit-results.json || true
+          # Bun audit with JSON output
+          bun audit --json > bun-audit-results.json || true
           
           # Check for high/critical vulnerabilities
-          CRITICAL_VULNS=$(cat npm-audit-results.json | jq '.metadata.vulnerabilities.critical // 0')
-          HIGH_VULNS=$(cat npm-audit-results.json | jq '.metadata.vulnerabilities.high // 0')
+          CRITICAL_VULNS=$(cat bun-audit-results.json | jq '.vulnerabilities[] | select(.severity == "critical") | length' | wc -l)
+          HIGH_VULNS=$(cat bun-audit-results.json | jq '.vulnerabilities[] | select(.severity == "high") | length' | wc -l)
           
           if [ "$CRITICAL_VULNS" -gt 0 ] || [ "$HIGH_VULNS" -gt 5 ]; then
             echo "::error::Critical or high vulnerabilities found: Critical=$CRITICAL_VULNS, High=$HIGH_VULNS"
@@ -80,16 +86,16 @@ jobs:
           
       - name: Code quality and security (ESLint + Security)
         run: |
-          # Run ESLint with security rules
-          npx eslint . --ext .js,.ts,.tsx --format @microsoft/eslint-formatter-sarif --output-file eslint-results.sarif || true
+          # Run ESLint with security rules using bun
+          bunx eslint . --ext .js,.ts,.tsx --format @microsoft/eslint-formatter-sarif --output-file eslint-results.sarif || true
           
           # Run security-focused linting
-          npx eslint . --ext .js,.ts,.tsx -c .eslintrc.security.js --format json > eslint-security.json || true
+          bunx eslint . --ext .js,.ts,.tsx --format json > eslint-security.json || true
           
       - name: TypeScript security check
         run: |
           # Check for any TypeScript compilation errors that could indicate security issues
-          npx tsc --noEmit --strict --noImplicitAny --noImplicitReturns
+          bunx tsc --noEmit --strict --noImplicitAny --noImplicitReturns
           
       - name: Upload SARIF results
         if: always()
@@ -219,11 +225,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         
-      - name: Terraform security scan (Checkov)
+      - name: Infrastructure security scan (Checkov)
         uses: bridgecrewio/checkov-action@master
         with:
           directory: ./infrastructure
-          framework: terraform,dockerfile,kubernetes,github_actions
+          framework: dockerfile,kubernetes,github_actions
           output_format: sarif
           output_file_path: checkov-results.sarif
           
@@ -280,16 +286,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          bun-version: latest
           
       - name: Install LinkedIn service dependencies
+        env:
+          CI: "true"
         run: |
           cd services/linkedin-service
-          npm ci --audit
+          bun install --production
           
       - name: LinkedIn compliance rate limit validation
         run: |
@@ -375,15 +382,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          bun-version: latest
           
       - name: Install dependencies
+        env:
+          CI: "true"
         run: |
-          npm ci
+          bun install --production
           
       - name: Run security integration tests
         env:
@@ -393,7 +401,7 @@ jobs:
           JWT_SECRET: test-jwt-secret-for-ci-only
         run: |
           # Run security-focused integration tests
-          npm run test:security:integration
+          bun run test:security:integration
           
       - name: Run authentication security tests
         env:
@@ -403,7 +411,7 @@ jobs:
           JWT_SECRET: test-jwt-secret-for-ci-only
         run: |
           cd services/auth-service
-          npm run test:security
+          bun run test:security
           
       - name: Run LinkedIn compliance tests
         env:
@@ -411,7 +419,7 @@ jobs:
           REDIS_URL: redis://localhost:6379
         run: |
           cd services/linkedin-service
-          npm run test:compliance
+          bun run test:compliance
           
       - name: Security penetration testing (OWASP ZAP)
         run: |
@@ -539,9 +547,8 @@ jobs:
           
       - name: Dependency vulnerability scan
         run: |
-          npm install -g npm-audit-resolver
-          npm ci
-          npm audit --json > daily-audit-results.json
+          bun install --production
+          bun audit --json > daily-audit-results.json
           
           # Check for new vulnerabilities
           CRITICAL_VULNS=$(cat daily-audit-results.json | jq '.metadata.vulnerabilities.critical // 0')

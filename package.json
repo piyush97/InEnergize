@@ -29,6 +29,8 @@
     "test:integration": "jest --config=jest.config.js --testPathPattern=integration",
     "test:e2e": "playwright test",
     "test:coverage": "jest --config=jest.config.js --coverage",
+    "test:security:integration": "jest --config=jest.config.js --testPathPattern=tests/automation/integration",
+    "install:all": "./scripts/ci-install.sh",
     "lint": "concurrently \"bun run lint:services\" \"bun run lint:web\"",
     "lint:services": "concurrently \"bun run lint:auth\" \"bun run lint:user\" \"bun run lint:linkedin\" \"bun run lint:analytics\"",
     "lint:web": "cd web && bun run lint",
@@ -80,7 +82,7 @@
     "format:check": "prettier --check \"**/*.{js,ts,tsx,json,md}\"",
     "prepare": "husky install",
     "pre-commit": "lint-staged",
-    "postinstall": "bun run setup:services && bun run setup:web"
+    "postinstall": "if [ \"$CI\" != \"true\" ] && command -v bun >/dev/null 2>&1; then bun run setup:services && bun run setup:web; fi"
   },
   "keywords": [
     "linkedin",
