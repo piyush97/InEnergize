@@ -1,0 +1,94 @@
+# Multi-stage security-hardened Dockerfile for InErgize Auth Service
+# Uses distroless base image and implements security best practices
+
+# Build stage with security scanning
+FROM node:20.10.0-alpine3.19 AS builder
+
+# Install security updates and build dependencies
+RUN apk update && apk upgrade && \
+    apk add --no-cache \
+        dumb-init \
+        curl \
+        ca-certificates && \
+    apk del apk-tools && \
+    rm -rf /var/cache/apk/*
+
+# Create non-root user for build process
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S inergize -u 1001 -G nodejs
+
+# Set secure working directory
+WORKDIR /app
+
+# Copy package files with proper ownership
+COPY --chown=inergize:nodejs package*.json ./
+COPY --chown=inergize:nodejs tsconfig.json ./
+COPY --chown=inergize:nodejs prisma/ ./prisma/
+
+# Switch to non-root user for dependency installation
+USER inergize
+
+# Install dependencies with security audit
+RUN npm ci --only=production --audit --audit-level=moderate && \
+    npm cache clean --force && \
+    rm -rf ~/.npm
+
+# Copy source code
+COPY --chown=inergize:nodejs src/ ./src/
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Build the application
+RUN npm run build
+
+# Production stage with distroless base
+FROM gcr.io/distroless/nodejs20-debian12:nonroot AS production
+
+# Copy dumb-init from builder
+COPY --from=builder /usr/bin/dumb-init /usr/bin/dumb-init
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=3001
+ENV NPM_CONFIG_CACHE=/tmp/.npm
+ENV NODE_OPTIONS="--max-old-space-size=512 --no-warnings"
+
+# Create app directory with proper permissions
+WORKDIR /app
+
+# Copy built application and dependencies from builder
+COPY --from=builder --chown=nonroot:nonroot /app/node_modules ./node_modules
+COPY --from=builder --chown=nonroot:nonroot /app/dist ./dist
+COPY --from=builder --chown=nonroot:nonroot /app/prisma ./prisma
+COPY --from=builder --chown=nonroot:nonroot /app/package*.json ./
+
+# Use distroless nonroot user (uid 65532)
+USER nonroot
+
+# Expose port (no need to bind to specific interface in container)
+EXPOSE 3001
+
+# Add health check with minimal overhead
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD ["node", "-e", "const http=require('http');const options={hostname:'localhost',port:3001,path:'/health',timeout:5000};const req=http.request(options,(res)=>{process.exit(res.statusCode===200?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+
+# Add security labels
+LABEL \
+    org.opencontainers.image.title="InErgize Auth Service" \
+    org.opencontainers.image.description="Secure authentication service for InErgize platform" \
+    org.opencontainers.image.vendor="InErgize" \
+    org.opencontainers.image.source="https://github.com/inergize/auth-service" \
+    org.opencontainers.image.documentation="https://docs.inergize.com/auth-service"
+
+# Use dumb-init for proper signal handling
+ENTRYPOINT ["dumb-init", "--"]
+
+# Start the application
+CMD ["node", "./dist/index.js"]
+
+# Additional security metadata
+LABEL security.scan.enabled="true"
+LABEL security.distroless="true"
+LABEL security.non-root="true"
+LABEL security.read-only="true"

@@ -1,0 +1,84 @@
+# Multi-stage security-hardened Dockerfile for InErgize LinkedIn Service
+# Critical security for LinkedIn API integration and user data
+
+FROM node:20.10.0-alpine3.19 AS builder
+
+# Security updates and minimal dependencies
+RUN apk update && apk upgrade && \
+    apk add --no-cache \
+        dumb-init \
+        curl \
+        ca-certificates && \
+    apk del apk-tools && \
+    rm -rf /var/cache/apk/*
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S inergize -u 1001 -G nodejs
+
+WORKDIR /app
+
+# Copy package files
+COPY --chown=inergize:nodejs package*.json ./
+COPY --chown=inergize:nodejs tsconfig.json ./
+
+USER inergize
+
+# Install with security audit - strict for LinkedIn compliance
+RUN npm ci --only=production --audit --audit-level=high && \
+    npm cache clean --force && \
+    rm -rf ~/.npm
+
+# Copy source code
+COPY --chown=inergize:nodejs src/ ./src/
+
+# Build application
+RUN npm run build
+
+# Production stage with distroless
+FROM gcr.io/distroless/nodejs20-debian12:nonroot AS production
+
+# Copy dumb-init
+COPY --from=builder /usr/bin/dumb-init /usr/bin/dumb-init
+
+# Environment for LinkedIn service
+ENV NODE_ENV=production
+ENV PORT=3003
+ENV NPM_CONFIG_CACHE=/tmp/.npm
+ENV NODE_OPTIONS="--max-old-space-size=1024 --no-warnings"
+
+# LinkedIn-specific security settings
+ENV LINKEDIN_RATE_LIMIT_STRICT=true
+ENV LINKEDIN_COMPLIANCE_MODE=ultra_conservative
+ENV LINKEDIN_HEALTH_THRESHOLD=40
+ENV LINKEDIN_AUTO_SUSPEND=true
+
+WORKDIR /app
+
+# Copy built application
+COPY --from=builder --chown=nonroot:nonroot /app/node_modules ./node_modules
+COPY --from=builder --chown=nonroot:nonroot /app/dist ./dist
+COPY --from=builder --chown=nonroot:nonroot /app/package*.json ./
+
+# Use distroless nonroot user
+USER nonroot
+
+EXPOSE 3003
+
+# Enhanced health check for LinkedIn service
+HEALTHCHECK --interval=30s --timeout=10s --start-period=45s --retries=3 \
+    CMD ["node", "-e", "const http=require('http');const options={hostname:'localhost',port:3003,path:'/health',timeout:8000};const req=http.request(options,(res)=>{let data='';res.on('data',chunk=>data+=chunk);res.on('end',()=>{try{const health=JSON.parse(data);process.exit(health.status==='healthy'&&health.linkedin?.compliance==='compliant'?0:1)}catch{process.exit(1)}});});req.on('error',()=>process.exit(1));req.end();"]
+
+# Security and compliance labels
+LABEL \
+    org.opencontainers.image.title="InErgize LinkedIn Service" \
+    org.opencontainers.image.description="Ultra-secure LinkedIn integration service with compliance monitoring" \
+    org.opencontainers.image.vendor="InErgize" \
+    security.compliance="linkedin-tos-ultra-conservative" \
+    security.data-classification="PII-sensitive" \
+    security.scan.enabled="true" \
+    security.distroless="true" \
+    security.non-root="true"
+
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "./dist/index.js"]
