@@ -33,60 +33,84 @@ export class LinkedInRateLimitService {
       password: process.env.REDIS_PASSWORD || undefined,
     });
 
-    // Updated conservative rate limits based on LinkedIn's 2024 API limits
-    // Using 40% of published limits for enhanced safety
+    // Ultra-conservative rate limits - 15% of LinkedIn's 2024 API limits (Phase 3)
+    // Maximum safety approach to prevent any compliance issues
     this.config = {
       endpoints: {
         '/v2/me': {
-          requestsPerHour: 40,    // LinkedIn 2024: ~100/hour
-          requestsPerDay: 400,    // LinkedIn 2024: ~1000/day
-          burstLimit: 4,
-          conservativeFactor: 0.4
+          requestsPerHour: 15,     // LinkedIn 2024: ~100/hour, we use 15%
+          requestsPerDay: 150,     // LinkedIn 2024: ~1000/day, we use 15%
+          burstLimit: 2,
+          conservativeFactor: 0.15
         },
         '/v2/people': {
-          requestsPerHour: 40,
-          requestsPerDay: 400,
-          burstLimit: 4,
-          conservativeFactor: 0.4
-        },
-        '/v2/posts': {             // Updated endpoint name
-          requestsPerHour: 20,     // More conservative for posting
-          requestsPerDay: 80,
+          requestsPerHour: 15,
+          requestsPerDay: 150,
           burstLimit: 2,
-          conservativeFactor: 0.25
+          conservativeFactor: 0.15
+        },
+        '/v2/posts': {
+          requestsPerHour: 6,      // Ultra-conservative for posting
+          requestsPerDay: 20,
+          burstLimit: 1,
+          conservativeFactor: 0.1
         },
         '/v2/people-search': {
-          requestsPerHour: 12,     // Very conservative for search
+          requestsPerHour: 3,      // Extremely conservative for search
+          requestsPerDay: 10,
+          burstLimit: 1,
+          conservativeFactor: 0.05
+        },
+        '/v2/networkUpdates': {
+          requestsPerHour: 8,
           requestsPerDay: 40,
           burstLimit: 1,
           conservativeFactor: 0.15
         },
-        '/v2/networkUpdates': {
-          requestsPerHour: 24,
-          requestsPerDay: 160,
-          burstLimit: 2,
-          conservativeFactor: 0.3
-        },
         '/v2/connections': {
-          requestsPerHour: 16,     // Ultra-conservative for connections
-          requestsPerDay: 60,      // Well below LinkedIn's 100/day limit
+          requestsPerHour: 4,      // Ultra-conservative for connections
+          requestsPerDay: 15,      // 15% of LinkedIn's 100/day limit
           burstLimit: 1,
-          conservativeFactor: 0.2
+          conservativeFactor: 0.15
         },
-        '/v2/invitation': {        // Connection invitations
-          requestsPerHour: 8,      // Maximum 8 per hour
-          requestsPerDay: 25,      // Maximum 25 per day (LinkedIn allows 100)
+        '/v2/invitation': {        // Connection invitations - Phase 3 ultra-conservative
+          requestsPerHour: 3,      // Maximum 3 per hour
+          requestsPerDay: 15,      // Maximum 15 per day (LinkedIn allows 100)
           burstLimit: 1,
-          conservativeFactor: 0.25
+          conservativeFactor: 0.15
+        },
+        '/v2/shares': {            // Post engagement (likes, comments)
+          requestsPerHour: 10,     // Conservative for engagement actions
+          requestsPerDay: 30,      // 15% of estimated 200/day limit
+          burstLimit: 1,
+          conservativeFactor: 0.15
+        },
+        '/v2/reactions': {         // Like reactions
+          requestsPerHour: 8,      // Conservative likes per hour
+          requestsPerDay: 25,      // 15% of estimated 150-200/day limit
+          burstLimit: 1,
+          conservativeFactor: 0.15
+        },
+        '/v2/comments': {          // Comment actions
+          requestsPerHour: 2,      // Ultra-conservative commenting
+          requestsPerDay: 8,       // Maximum 8 comments per day
+          burstLimit: 1,
+          conservativeFactor: 0.15
+        },
+        '/v2/follows': {           // Follow/unfollow actions
+          requestsPerHour: 2,      // Very conservative follows
+          requestsPerDay: 5,       // Maximum 5 follows per day
+          burstLimit: 1,
+          conservativeFactor: 0.15
         }
       },
       global: {
-        maxRequestsPerHour: 150,   // Reduced global limit
-        maxRequestsPerDay: 800,    // Conservative daily global limit
-        retryAttempts: 3,
-        backoffMultiplier: 2,
-        adaptiveThrottling: true,  // Enable adaptive throttling
-        complianceMode: process.env.LINKEDIN_COMPLIANCE_MODE || 'STRICT'
+        maxRequestsPerHour: 50,    // Reduced global limit (Phase 3)
+        maxRequestsPerDay: 200,    // Ultra-conservative daily global limit
+        retryAttempts: 2,          // Reduced retries to minimize API calls
+        backoffMultiplier: 3,      // Longer backoff to reduce pressure
+        adaptiveThrottling: true,
+        complianceMode: process.env.LINKEDIN_COMPLIANCE_MODE || 'ULTRA_STRICT'
       }
     };
 
