@@ -1,0 +1,860 @@
+# Production Docker Compose with Enterprise Security
+# Secure, scalable, and compliant deployment configuration for InErgize
+
+version: '3.8'
+
+# Production services with security hardening
+services:
+  # PostgreSQL with production security
+  postgres:
+    image: postgres:16.1-alpine
+    container_name: inergize-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data:Z
+      - ./infrastructure/security/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./infrastructure/security/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - /dev/urandom:/dev/random:ro
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba.conf
+      -c ssl=on
+      -c ssl_cert_file=/etc/ssl/certs/server.crt
+      -c ssl_key_file=/etc/ssl/private/server.key
+      -c ssl_ca_file=/etc/ssl/certs/ca.crt
+      -c log_statement=all
+      -c log_connections=on
+      -c log_disconnections=on
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - inergize-secure-network
+    secrets:
+      - postgres_password
+      - postgres_ssl_cert
+      - postgres_ssl_key
+      - postgres_ssl_ca
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=200m
+      - /var/run:noexec,nosuid,size=100m
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+        reservations:
+          memory: 2G
+          cpus: '1.0'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging: &logging
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=postgres,environment=production"
+
+  # TimescaleDB with enhanced security
+  timescale:
+    image: timescale/timescaledb:2.13.0-pg16
+    container_name: inergize-timescale-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${TIMESCALE_DB}
+      POSTGRES_USER: ${TIMESCALE_USER}
+      POSTGRES_PASSWORD_FILE: /run/secrets/timescale_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+      TIMESCALEDB_TELEMETRY: off
+    volumes:
+      - timescale_data:/var/lib/postgresql/data:Z
+      - ./infrastructure/security/timescale/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - /dev/urandom:/dev/random:ro
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c ssl=on
+      -c ssl_cert_file=/etc/ssl/certs/server.crt
+      -c ssl_key_file=/etc/ssl/private/server.key
+      -c log_statement=ddl
+      -c log_connections=on
+    ports:
+      - "127.0.0.1:5433:5432"
+    networks:
+      - inergize-secure-network
+    secrets:
+      - timescale_password
+      - timescale_ssl_cert
+      - timescale_ssl_key
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=300m
+      - /var/run:noexec,nosuid,size=100m
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: '4.0'
+        reservations:
+          memory: 4G
+          cpus: '2.0'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TIMESCALE_USER} -d ${TIMESCALE_DB}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging: *logging
+
+  # Redis with production security
+  redis:
+    image: redis:7.2.3-alpine
+    container_name: inergize-redis-prod
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass-file /run/secrets/redis_password
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 2gb
+      --maxmemory-policy allkeys-lru
+      --timeout 300
+      --tcp-keepalive 60
+      --maxclients 2000
+      --bind 0.0.0.0
+      --protected-mode yes
+      --port 6379
+      --tls-port 6380
+      --tls-cert-file /etc/ssl/certs/redis.crt
+      --tls-key-file /etc/ssl/private/redis.key
+      --tls-ca-cert-file /etc/ssl/certs/ca.crt
+      --tls-auth-clients yes
+    volumes:
+      - redis_data:/data:Z
+    ports:
+      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:6380:6380"  # TLS port
+    networks:
+      - inergize-secure-network
+    secrets:
+      - redis_password
+      - redis_ssl_cert
+      - redis_ssl_key
+      - redis_ssl_ca
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "$(cat /run/secrets/redis_password)", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging: *logging
+
+  # Elasticsearch with security enabled
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
+    container_name: inergize-elasticsearch-prod
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.keystore.path=/usr/share/elasticsearch/config/certs/elastic-certificates.p12
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.keystore.path=/usr/share/elasticsearch/config/certs/elastic-certificates.p12
+      - xpack.security.transport.ssl.truststore.path=/usr/share/elasticsearch/config/certs/elastic-certificates.p12
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - ELASTIC_PASSWORD_FILE=/run/secrets/elastic_password
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data:Z
+      - ./infrastructure/security/elasticsearch/certs:/usr/share/elasticsearch/config/certs:ro
+    ports:
+      - "127.0.0.1:9200:9200"
+    networks:
+      - inergize-secure-network
+    secrets:
+      - elastic_password
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+        reservations:
+          memory: 2G
+          cpus: '1.0'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -k https://localhost:9200/_cluster/health -u elastic:$(cat /run/secrets/elastic_password) || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    logging: *logging
+
+  # Kong API Gateway with enterprise security
+  kong:
+    image: kong/kong-gateway:3.4.2.3-alpine
+    container_name: inergize-kong-prod
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.security.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 127.0.0.1:8001
+      KONG_PROXY_LISTEN: 0.0.0.0:8000 ssl http2, 0.0.0.0:8443 http2 ssl
+      KONG_SSL_CERT: /etc/kong/ssl/kong.crt
+      KONG_SSL_CERT_KEY: /etc/kong/ssl/kong.key
+      KONG_ADMIN_SSL_CERT: /etc/kong/ssl/kong-admin.crt
+      KONG_ADMIN_SSL_CERT_KEY: /etc/kong/ssl/kong-admin.key
+      KONG_NGINX_WORKER_PROCESSES: "4"
+      KONG_NGINX_HTTP_CLIENT_MAX_BODY_SIZE: "10m"
+      KONG_REAL_IP_HEADER: "X-Forwarded-For"
+      KONG_TRUSTED_IPS: "0.0.0.0/0,::/0"
+      KONG_LOG_LEVEL: "notice"
+      KONG_PLUGINS: "bundled,rate-limiting,jwt,cors,ip-restriction,bot-detection,request-size-limiting"
+    volumes:
+      - ./infrastructure/kong/kong.security.yml:/kong/declarative/kong.security.yml:ro
+      - ./infrastructure/security/kong/ssl:/etc/kong/ssl:ro
+    ports:
+      - "80:8000"     # HTTP
+      - "443:8443"    # HTTPS
+      - "127.0.0.1:8001:8001"  # Admin API (localhost only)
+    networks:
+      - inergize-secure-network
+    depends_on:
+      - postgres
+      - redis
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging: *logging
+
+  # Auth Service with production security
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile.secure
+      args:
+        NODE_ENV: production
+        BUILD_DATE: ${BUILD_DATE}
+        VCS_REF: ${VCS_REF}
+        VERSION: ${VERSION}
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAME:-inergize}/auth-service:${IMAGE_TAG:-latest}
+    container_name: inergize-auth-service-prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER}:$(cat /run/secrets/postgres_password)@postgres:5432/${POSTGRES_DB}?sslmode=require
+      REDIS_URL: rediss://:$(cat /run/secrets/redis_password)@redis:6380?tls_cert_file=/etc/ssl/certs/redis.crt&tls_key_file=/etc/ssl/private/redis.key&tls_ca_file=/etc/ssl/certs/ca.crt
+      JWT_ACCESS_SECRET_FILE: /run/secrets/jwt_access_secret
+      JWT_REFRESH_SECRET_FILE: /run/secrets/jwt_refresh_secret
+      ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      LOG_LEVEL: info
+      AUDIT_LOGGING: true
+      RATE_LIMIT_ENABLED: true
+      MFA_ENABLED: true
+      SESSION_SECURITY: strict
+    ports:
+      - "127.0.0.1:3001:3001"
+    networks:
+      - inergize-secure-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    secrets:
+      - postgres_password
+      - redis_password
+      - jwt_access_secret
+      - jwt_refresh_secret
+      - encryption_key
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+      restart_policy:
+        condition: unless-stopped
+        delay: 10s
+        max_attempts: 5
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3001,path:'/health',timeout:5000};const req=http.request(options,(res)=>{process.exit(res.statusCode===200?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    logging: *logging
+
+  # LinkedIn Service with ultra-strict security
+  linkedin-service:
+    build:
+      context: ./services/linkedin-service
+      dockerfile: Dockerfile.secure
+      args:
+        NODE_ENV: production
+        BUILD_DATE: ${BUILD_DATE}
+        VCS_REF: ${VCS_REF}
+        VERSION: ${VERSION}
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAME:-inergize}/linkedin-service:${IMAGE_TAG:-latest}
+    container_name: inergize-linkedin-service-prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      REDIS_HOST: redis
+      REDIS_PORT: 6380  # TLS port
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      REDIS_TLS: true
+      JWT_SECRET_FILE: /run/secrets/jwt_access_secret
+      AUTH_SERVICE_URL: https://auth-service:3001
+      LINKEDIN_CLIENT_ID_FILE: /run/secrets/linkedin_client_id
+      LINKEDIN_CLIENT_SECRET_FILE: /run/secrets/linkedin_client_secret
+      LINKEDIN_REDIRECT_URI: https://app.inergize.com/auth/linkedin/callback
+      # Ultra-conservative LinkedIn compliance settings
+      LINKEDIN_RATE_LIMIT_STRICT: true
+      LINKEDIN_COMPLIANCE_MODE: ultra_conservative
+      LINKEDIN_HEALTH_THRESHOLD: 40
+      LINKEDIN_AUTO_SUSPEND: true
+      LINKEDIN_DAILY_LIMIT: 15
+      LINKEDIN_HOURLY_LIMIT: 2
+      LINKEDIN_MINUTE_LIMIT: 1
+      LINKEDIN_MIN_DELAY: 45000
+      LINKEDIN_MAX_DELAY: 180000
+      LINKEDIN_WEEKEND_MODE: reduced
+      LOG_LEVEL: info
+      AUDIT_LOGGING: true
+      COMPLIANCE_LOGGING: verbose
+    ports:
+      - "127.0.0.1:3003:3003"
+    networks:
+      - inergize-secure-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    secrets:
+      - redis_password
+      - jwt_access_secret
+      - linkedin_client_id
+      - linkedin_client_secret
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=200m
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.5'
+        reservations:
+          memory: 1G
+          cpus: '0.75'
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3003,path:'/health',timeout:8000};const req=http.request(options,(res)=>{let data='';res.on('data',chunk=>data+=chunk);res.on('end',()=>{try{const health=JSON.parse(data);process.exit(health.status==='healthy'&&health.linkedin?.compliance==='compliant'?0:1)}catch{process.exit(1)}});});req.on('error',()=>process.exit(1));req.end();"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    logging: *logging
+
+  # User Service with data protection
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile.secure
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAME:-inergize}/user-service:${IMAGE_TAG:-latest}
+    container_name: inergize-user-service-prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      DATABASE_URL: postgresql://${POSTGRES_USER}:$(cat /run/secrets/postgres_password)@postgres:5432/${POSTGRES_DB}?sslmode=require
+      REDIS_URL: rediss://:$(cat /run/secrets/redis_password)@redis:6380
+      JWT_SECRET_FILE: /run/secrets/jwt_access_secret
+      ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      DATA_RETENTION_DAYS: 730  # GDPR compliance
+      PII_ENCRYPTION: true
+      AUDIT_LOGGING: true
+    ports:
+      - "127.0.0.1:3002:3002"
+    networks:
+      - inergize-secure-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    secrets:
+      - postgres_password
+      - redis_password
+      - jwt_access_secret
+      - encryption_key
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3002,path:'/health',timeout:5000};const req=http.request(options,(res)=>{process.exit(res.statusCode===200?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    logging: *logging
+
+  # Analytics Service with data security
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile.secure
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAME:-inergize}/analytics-service:${IMAGE_TAG:-latest}
+    container_name: inergize-analytics-service-prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+      TIMESCALE_HOST: timescale
+      TIMESCALE_PORT: 5432
+      TIMESCALE_USER: ${TIMESCALE_USER}
+      TIMESCALE_PASSWORD_FILE: /run/secrets/timescale_password
+      TIMESCALE_DATABASE: ${TIMESCALE_DB}
+      TIMESCALE_SSL: true
+      REDIS_URL: rediss://:$(cat /run/secrets/redis_password)@redis:6380
+      JWT_SECRET_FILE: /run/secrets/jwt_access_secret
+      WS_ENABLED: true
+      WS_PORT: 3007
+      METRICS_ENABLED: true
+      METRICS_PORT: 9090
+      DATA_RETENTION_DAYS: 90
+      ANONYMIZATION_AFTER_DAYS: 365
+      AUDIT_LOGGING: true
+    ports:
+      - "127.0.0.1:3004:3004"
+      - "127.0.0.1:3007:3007"  # WebSocket
+      - "127.0.0.1:9090:9090"  # Metrics
+    networks:
+      - inergize-secure-network
+    depends_on:
+      timescale:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    secrets:
+      - timescale_password
+      - redis_password
+      - jwt_access_secret
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=200m
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3004,path:'/health',timeout:5000};const req=http.request(options,(res)=>{process.exit(res.statusCode===200?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging: *logging
+
+  # AI Service with API security
+  ai-service:
+    build:
+      context: ./services/ai-service
+      dockerfile: Dockerfile.secure
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAME:-inergize}/ai-service:${IMAGE_TAG:-latest}
+    container_name: inergize-ai-service-prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3005
+      REDIS_URL: rediss://:$(cat /run/secrets/redis_password)@redis:6380
+      JWT_SECRET_FILE: /run/secrets/jwt_access_secret
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
+      OPENAI_MODEL: gpt-4
+      OPENAI_MAX_TOKENS: 4000
+      OPENAI_TEMPERATURE: 0.7
+      RATE_LIMIT_PER_MINUTE: 10
+      RATE_LIMIT_PER_HOUR: 100
+      RATE_LIMIT_PER_DAY: 500
+      CONTENT_MODERATION: true
+      PII_DETECTION: true
+      AUDIT_LOGGING: true
+    ports:
+      - "127.0.0.1:3005:3005"
+    networks:
+      - inergize-secure-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    secrets:
+      - redis_password
+      - jwt_access_secret
+      - openai_api_key
+      - anthropic_api_key
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3005,path:'/health',timeout:5000};const req=http.request(options,(res)=>{process.exit(res.statusCode===200?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    logging: *logging
+
+  # Web Application with security headers
+  web-app:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.secure
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAME:-inergize}/web-app:${IMAGE_TAG:-latest}
+    container_name: inergize-web-app-prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://api.inergize.com
+      NEXTAUTH_SECRET_FILE: /run/secrets/nextauth_secret
+      NEXTAUTH_URL: https://app.inergize.com
+      NEXT_PUBLIC_LINKEDIN_CLIENT_ID: ${LINKEDIN_CLIENT_ID}
+      CSP_ENABLED: true
+      HSTS_ENABLED: true
+      SECURITY_HEADERS_ENABLED: true
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - inergize-secure-network
+    depends_on:
+      - kong
+    secrets:
+      - nextauth_secret
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+      - /app/.next/cache:noexec,nosuid,size=200m
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3000,path:'/health',timeout:5000};const req=http.request(options,(res)=>{process.exit(res.statusCode===200?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    logging: *logging
+
+  # Security monitoring services
+  prometheus:
+    image: prom/prometheus:v2.47.2
+    container_name: inergize-prometheus-prod
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=90d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    volumes:
+      - ./infrastructure/monitoring/security-monitoring.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/monitoring/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - inergize-secure-network
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+    logging: *logging
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: inergize-grafana-prod
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD_FILE: /run/secrets/grafana_admin_password
+      GF_SECURITY_SECRET_KEY_FILE: /run/secrets/grafana_secret_key
+      GF_USERS_ALLOW_SIGN_UP: false
+      GF_SECURITY_DISABLE_GRAVATAR: true
+      GF_SECURITY_COOKIE_SECURE: true
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      GF_SECURITY_CONTENT_TYPE_PROTECTION: true
+      GF_SECURITY_X_CONTENT_TYPE_OPTIONS: nosniff
+      GF_SECURITY_X_XSS_PROTECTION: true
+      GF_SERVER_ROOT_URL: https://monitoring.inergize.com
+      GF_DATABASE_TYPE: postgres
+      GF_DATABASE_HOST: postgres:5432
+      GF_DATABASE_NAME: grafana
+      GF_DATABASE_USER: grafana
+      GF_DATABASE_PASSWORD_FILE: /run/secrets/grafana_db_password
+      GF_DATABASE_SSL_MODE: require
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/monitoring/grafana:/etc/grafana/provisioning:ro
+    ports:
+      - "127.0.0.1:3001:3000"
+    networks:
+      - inergize-secure-network
+    depends_on:
+      - prometheus
+      - postgres
+    secrets:
+      - grafana_admin_password
+      - grafana_secret_key
+      - grafana_db_password
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+    logging: *logging
+
+# Production networking with security
+networks:
+  inergize-secure-network:
+    driver: bridge
+    name: inergize-secure-network
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "false"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+    labels:
+      - "environment=production"
+      - "security.encrypted=true"
+
+# Docker secrets for production
+secrets:
+  postgres_password:
+    external: true
+    name: inergize_postgres_password_v1
+  timescale_password:
+    external: true
+    name: inergize_timescale_password_v1
+  redis_password:
+    external: true
+    name: inergize_redis_password_v1
+  elastic_password:
+    external: true
+    name: inergize_elastic_password_v1
+  jwt_access_secret:
+    external: true
+    name: inergize_jwt_access_secret_v1
+  jwt_refresh_secret:
+    external: true
+    name: inergize_jwt_refresh_secret_v1
+  encryption_key:
+    external: true
+    name: inergize_encryption_key_v1
+  linkedin_client_id:
+    external: true
+    name: inergize_linkedin_client_id_v1
+  linkedin_client_secret:
+    external: true
+    name: inergize_linkedin_client_secret_v1
+  openai_api_key:
+    external: true
+    name: inergize_openai_api_key_v1
+  anthropic_api_key:
+    external: true
+    name: inergize_anthropic_api_key_v1
+  nextauth_secret:
+    external: true
+    name: inergize_nextauth_secret_v1
+  grafana_admin_password:
+    external: true
+    name: inergize_grafana_admin_password_v1
+  grafana_secret_key:
+    external: true
+    name: inergize_grafana_secret_key_v1
+  grafana_db_password:
+    external: true
+    name: inergize_grafana_db_password_v1
+  # SSL/TLS certificates
+  postgres_ssl_cert:
+    external: true
+    name: inergize_postgres_ssl_cert_v1
+  postgres_ssl_key:
+    external: true
+    name: inergize_postgres_ssl_key_v1
+  postgres_ssl_ca:
+    external: true
+    name: inergize_postgres_ssl_ca_v1
+  timescale_ssl_cert:
+    external: true
+    name: inergize_timescale_ssl_cert_v1
+  timescale_ssl_key:
+    external: true
+    name: inergize_timescale_ssl_key_v1
+  redis_ssl_cert:
+    external: true
+    name: inergize_redis_ssl_cert_v1
+  redis_ssl_key:
+    external: true
+    name: inergize_redis_ssl_key_v1
+  redis_ssl_ca:
+    external: true
+    name: inergize_redis_ssl_ca_v1
+
+# Production volumes with encryption
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,rw
+      device: /var/lib/inergize/production/postgres
+    labels:
+      - "backup.enabled=true"
+      - "encryption.enabled=true"
+      
+  timescale_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,rw
+      device: /var/lib/inergize/production/timescale
+    labels:
+      - "backup.enabled=true"
+      - "encryption.enabled=true"
+      
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,rw
+      device: /var/lib/inergize/production/redis
+    labels:
+      - "backup.enabled=true"
+      - "encryption.enabled=true"
+      
+  elasticsearch_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,rw
+      device: /var/lib/inergize/production/elasticsearch
+    labels:
+      - "backup.enabled=true"
+      - "encryption.enabled=true"
+      
+  prometheus_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,rw
+      device: /var/lib/inergize/production/prometheus
+    labels:
+      - "backup.enabled=true"
+      
+  grafana_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,rw
+      device: /var/lib/inergize/production/grafana
+    labels:
+      - "backup.enabled=true"

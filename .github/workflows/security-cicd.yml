@@ -1,0 +1,580 @@
+# Secure CI/CD Pipeline for InErgize
+# Implements security scanning, vulnerability detection, and automated deployment
+
+name: Security-Hardened CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, 'release/*' ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run security scans daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  NODE_VERSION: '20.10.0'
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
+jobs:
+  # Security Validation Job
+  security-validation:
+    name: Security Validation & Compliance
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    
+    permissions:
+      contents: read
+      security-events: write
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for security analysis
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: |
+          npm ci --audit --audit-level=moderate
+          # Install security scanning tools
+          npm install -g @cyclonedx/cyclonedx-npm @microsoft/eslint-formatter-sarif
+          
+      - name: Run security validation script
+        run: |
+          chmod +x ./scripts/security-validation.sh
+          ENVIRONMENT=ci ./scripts/security-validation.sh
+          
+      - name: Dependency vulnerability scan
+        run: |
+          # Generate SBOM (Software Bill of Materials)
+          cyclonedx-npm --output-file sbom.json
+          
+          # NPM audit with JSON output
+          npm audit --json > npm-audit-results.json || true
+          
+          # Check for high/critical vulnerabilities
+          CRITICAL_VULNS=$(cat npm-audit-results.json | jq '.metadata.vulnerabilities.critical // 0')
+          HIGH_VULNS=$(cat npm-audit-results.json | jq '.metadata.vulnerabilities.high // 0')
+          
+          if [ "$CRITICAL_VULNS" -gt 0 ] || [ "$HIGH_VULNS" -gt 5 ]; then
+            echo "::error::Critical or high vulnerabilities found: Critical=$CRITICAL_VULNS, High=$HIGH_VULNS"
+            exit 1
+          fi
+          
+      - name: Secret scanning with TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --debug --only-verified
+          
+      - name: Code quality and security (ESLint + Security)
+        run: |
+          # Run ESLint with security rules
+          npx eslint . --ext .js,.ts,.tsx --format @microsoft/eslint-formatter-sarif --output-file eslint-results.sarif || true
+          
+          # Run security-focused linting
+          npx eslint . --ext .js,.ts,.tsx -c .eslintrc.security.js --format json > eslint-security.json || true
+          
+      - name: TypeScript security check
+        run: |
+          # Check for any TypeScript compilation errors that could indicate security issues
+          npx tsc --noEmit --strict --noImplicitAny --noImplicitReturns
+          
+      - name: Upload SARIF results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: eslint-results.sarif
+          category: eslint
+          
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.json
+          retention-days: 90
+          
+      - name: Upload security validation report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report-${{ github.sha }}
+          path: security-validation-report.json
+          retention-days: 90
+
+  # Container Security Scanning
+  container-security:
+    name: Container Security Scanning
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    needs: security-validation
+    
+    permissions:
+      contents: read
+      security-events: write
+      packages: write
+      
+    strategy:
+      matrix:
+        service: 
+          - auth-service
+          - user-service
+          - linkedin-service
+          - analytics-service
+          - ai-service
+          
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: image=moby/buildkit:buildx-stable-1
+          
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Build secure container image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/${{ matrix.service }}
+          file: ./services/${{ matrix.service }}/Dockerfile.secure
+          push: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+            BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ github.ref_name }}
+            
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-${{ matrix.service }}.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          exit-code: '1'  # Fail on vulnerabilities
+          
+      - name: Run Snyk container security scan
+        uses: snyk/actions/docker@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:${{ github.sha }}
+          args: --severity-threshold=medium --file=./services/${{ matrix.service }}/Dockerfile.secure
+          
+      - name: Run Docker Bench Security
+        run: |
+          # Clone and run Docker Bench Security
+          git clone https://github.com/docker/docker-bench-security.git
+          cd docker-bench-security
+          sudo sh docker-bench-security.sh -c container_images
+          
+      - name: Container image signing with Cosign
+        if: github.ref == 'refs/heads/main'
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v1.13.1'
+          
+      - name: Sign container image
+        if: github.ref == 'refs/heads/main'
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          cosign sign ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:${{ github.sha }}
+          
+      - name: Upload Trivy scan results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-${{ matrix.service }}.sarif'
+          category: 'trivy-${{ matrix.service }}'
+
+  # Infrastructure Security Testing
+  infrastructure-security:
+    name: Infrastructure Security Testing
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    needs: security-validation
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Terraform security scan (Checkov)
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: ./infrastructure
+          framework: terraform,dockerfile,kubernetes,github_actions
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+          
+      - name: Docker Compose security validation
+        run: |
+          # Validate Docker Compose security configurations
+          docker-compose -f docker-compose.yml config --quiet
+          docker-compose -f infrastructure/security/docker-security.yml config --quiet
+          
+          # Check for security misconfigurations
+          grep -r "privileged.*true" . && echo "::error::Privileged containers found" && exit 1 || true
+          grep -r ":latest" ./services/*/Dockerfile* && echo "::warning::Latest tags found in Dockerfiles" || true
+          
+      - name: Kong configuration security check
+        run: |
+          # Validate Kong configuration
+          docker run --rm -v $(pwd)/infrastructure/kong:/kong/declarative kong:latest kong config -c /kong/declarative/kong.security.yml check
+          
+          # Check for security misconfigurations in Kong
+          if grep -q "admin_listen.*0.0.0.0" infrastructure/kong/*.yml; then
+            echo "::error::Kong admin interface exposed on all interfaces"
+            exit 1
+          fi
+          
+      - name: Network security validation
+        run: |
+          # Check for overly permissive network configurations
+          if grep -r "0.0.0.0/0" infrastructure/; then
+            echo "::warning::Overly permissive network rules found"
+          fi
+          
+          # Validate TLS configurations
+          find infrastructure/ -name "*.yml" -o -name "*.yaml" | xargs grep -l "tls\|ssl" | while read file; do
+            if ! grep -q "TLSv1.[23]" "$file"; then
+              echo "::warning::Potentially insecure TLS configuration in $file"
+            fi
+          done
+          
+      - name: Upload infrastructure scan results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov-results.sarif
+          category: infrastructure-security
+
+  # LinkedIn Compliance Testing
+  linkedin-compliance:
+    name: LinkedIn API Compliance Testing
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    needs: security-validation
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install LinkedIn service dependencies
+        run: |
+          cd services/linkedin-service
+          npm ci --audit
+          
+      - name: LinkedIn compliance rate limit validation
+        run: |
+          cd services/linkedin-service
+          
+          # Check rate limit configurations
+          if ! grep -q "15.*day" src/compliance/rate-limiter.ts; then
+            echo "::error::LinkedIn daily rate limit not set to ultra-conservative 15/day"
+            exit 1
+          fi
+          
+          if ! grep -q "1.*minute" src/compliance/rate-limiter.ts; then
+            echo "::error::LinkedIn per-minute rate limit not set to ultra-conservative 1/min"
+            exit 1
+          fi
+          
+      - name: LinkedIn health monitoring validation
+        run: |
+          cd services/linkedin-service
+          
+          # Check health scoring implementation
+          if ! grep -q "healthScore.*40" src/**/*.ts; then
+            echo "::error::LinkedIn health score threshold not set to 40 (ultra-conservative)"
+            exit 1
+          fi
+          
+          # Check for automatic suspension mechanisms
+          if ! grep -q "autoSuspend\|emergencyStop" src/**/*.ts; then
+            echo "::error::LinkedIn automatic suspension not implemented"
+            exit 1
+          fi
+          
+      - name: LinkedIn automation pattern validation
+        run: |
+          cd services/linkedin-service
+          
+          # Check for human-like delay patterns
+          if ! grep -q "45.*180" src/automation/*.ts; then
+            echo "::warning::LinkedIn automation delays should be 45-180 seconds for human-like behavior"
+          fi
+          
+          # Check for weekend/time-based restrictions
+          if ! grep -q "weekend\|businessHours" src/**/*.ts; then
+            echo "::warning::LinkedIn automation should respect business hours and weekend patterns"
+          fi
+          
+      - name: Data retention compliance check
+        run: |
+          # Check GDPR data retention policies
+          if ! find . -name "*.ts" -o -name "*.js" | xargs grep -l "dataRetention\|90.*days"; then
+            echo "::error::GDPR-compliant data retention not implemented"
+            exit 1
+          fi
+
+  # Security Integration Testing
+  security-integration-tests:
+    name: Security Integration Tests
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    needs: [security-validation, container-security]
+    
+    services:
+      postgres:
+        image: postgres:16.1-alpine
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: inergize_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          
+      redis:
+        image: redis:7.2-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: |
+          npm ci
+          
+      - name: Run security integration tests
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:test_password@localhost:5432/inergize_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test-jwt-secret-for-ci-only
+        run: |
+          # Run security-focused integration tests
+          npm run test:security:integration
+          
+      - name: Run authentication security tests
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:test_password@localhost:5432/inergize_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test-jwt-secret-for-ci-only
+        run: |
+          cd services/auth-service
+          npm run test:security
+          
+      - name: Run LinkedIn compliance tests
+        env:
+          NODE_ENV: test
+          REDIS_URL: redis://localhost:6379
+        run: |
+          cd services/linkedin-service
+          npm run test:compliance
+          
+      - name: Security penetration testing (OWASP ZAP)
+        run: |
+          # Start services for testing
+          docker-compose -f docker-compose.test.yml up -d
+          sleep 30
+          
+          # Run OWASP ZAP baseline scan
+          docker run -v $(pwd):/zap/wrk/:rw -t owasp/zap2docker-stable zap-baseline.py \
+            -t http://localhost:8000 \
+            -J zap-report.json \
+            -r zap-report.html \
+            -x zap-report.xml
+            
+          # Cleanup
+          docker-compose -f docker-compose.test.yml down
+          
+      - name: Upload ZAP scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-security-report-${{ github.sha }}
+          path: |
+            zap-report.html
+            zap-report.json
+            zap-report.xml
+          retention-days: 30
+
+  # Production Deployment (only on main branch)
+  deploy-production:
+    name: Secure Production Deployment
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [security-validation, container-security, infrastructure-security, linkedin-compliance, security-integration-tests]
+    environment: production
+    
+    permissions:
+      contents: read
+      packages: write
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Configure production secrets
+        run: |
+          # Create secrets directory
+          mkdir -p infrastructure/secrets
+          
+          # Generate secure secrets (in production, these would come from a secure vault)
+          echo "${{ secrets.POSTGRES_PASSWORD }}" > infrastructure/secrets/postgres_password.txt
+          echo "${{ secrets.TIMESCALE_PASSWORD }}" > infrastructure/secrets/timescale_password.txt
+          echo "${{ secrets.REDIS_PASSWORD }}" > infrastructure/secrets/redis_password.txt
+          echo "${{ secrets.ELASTIC_PASSWORD }}" > infrastructure/secrets/elastic_password.txt
+          echo "${{ secrets.KIBANA_ENCRYPTION_KEY }}" > infrastructure/secrets/kibana_encryption_key.txt
+          
+          # Set appropriate permissions
+          chmod 600 infrastructure/secrets/*.txt
+          
+      - name: Deploy to production infrastructure
+        env:
+          ENVIRONMENT: production
+          DOCKER_REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Deploy with security-hardened configuration
+          docker-compose -f infrastructure/security/docker-security.yml \
+            -f docker-compose.prod.yml up -d
+            
+          # Wait for services to be healthy
+          timeout 300 bash -c 'until docker-compose ps | grep -q "healthy"; do sleep 10; done'
+          
+      - name: Run post-deployment security validation
+        run: |
+          # Validate all services are running securely
+          ./scripts/security-validation.sh
+          
+          # Check SSL/TLS configurations
+          curl -I https://api.inergize.com/health --max-time 10
+          
+          # Validate Kong security headers
+          curl -I https://api.inergize.com/health | grep -q "X-Content-Type-Options: nosniff"
+          curl -I https://api.inergize.com/health | grep -q "X-Frame-Options: DENY"
+          
+      - name: Update security monitoring
+        run: |
+          # Update Prometheus monitoring targets
+          curl -X POST http://prometheus:9090/-/reload
+          
+          # Update security dashboards
+          curl -X POST http://grafana:3000/api/admin/provisioning/dashboards/reload \
+            -H "Authorization: Bearer ${{ secrets.GRAFANA_API_KEY }}"
+            
+      - name: Send deployment notification
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          text: |
+            Production deployment ${{ job.status }}
+            Commit: ${{ github.sha }}
+            Branch: ${{ github.ref_name }}
+            Security validation: ✅
+            Container scanning: ✅
+            Infrastructure security: ✅
+            LinkedIn compliance: ✅
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # Scheduled Security Scans
+  scheduled-security-scan:
+    name: Scheduled Security Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Run comprehensive security audit
+        run: |
+          # Run full security validation
+          ./scripts/security-validation.sh
+          
+      - name: Dependency vulnerability scan
+        run: |
+          npm install -g npm-audit-resolver
+          npm ci
+          npm audit --json > daily-audit-results.json
+          
+          # Check for new vulnerabilities
+          CRITICAL_VULNS=$(cat daily-audit-results.json | jq '.metadata.vulnerabilities.critical // 0')
+          if [ "$CRITICAL_VULNS" -gt 0 ]; then
+            echo "::error::New critical vulnerabilities detected: $CRITICAL_VULNS"
+            # Send alert to security team
+            curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
+              -d '{"text":"🚨 Critical vulnerabilities detected in InErgize dependencies: '"$CRITICAL_VULNS"'"}'
+          fi
+          
+      - name: Container registry security scan
+        run: |
+          # Scan all production images
+          for service in auth-service user-service linkedin-service analytics-service ai-service; do
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/$service:latest
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              aquasec/trivy image --severity HIGH,CRITICAL \
+              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/$service:latest
+          done
+          
+      - name: Generate security report
+        run: |
+          # Generate comprehensive security report
+          ./scripts/generate-security-report.sh > security-report-$(date +%Y%m%d).json
+          
+      - name: Upload security report
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-security-report-$(date +%Y%m%d)
+          path: security-report-*.json
+          retention-days: 365  # Keep for compliance
+
+# Additional workflow configurations
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
