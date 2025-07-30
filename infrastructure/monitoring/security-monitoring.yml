@@ -1,0 +1,678 @@
+# InErgize Security Monitoring and Incident Response Configuration
+# Real-time security monitoring, threat detection, and automated response
+
+# Prometheus Security Metrics Collection
+prometheus:
+  global:
+    scrape_interval: 15s
+    evaluation_interval: 15s
+    external_labels:
+      environment: '${ENVIRONMENT:-production}'
+      cluster: 'inergize-main'
+      
+  rule_files:
+    - "/etc/prometheus/rules/security-rules.yml"
+    - "/etc/prometheus/rules/linkedin-compliance-rules.yml"
+    - "/etc/prometheus/rules/auth-security-rules.yml"
+    
+  alerting:
+    alertmanagers:
+      - static_configs:
+          - targets:
+            - alertmanager:9093
+        timeout: 10s
+        api_version: v2
+        
+  scrape_configs:
+    # Kong API Gateway metrics
+    - job_name: 'kong-security'
+      static_configs:
+        - targets: ['kong:8001']
+      scrape_interval: 30s
+      metrics_path: '/metrics'
+      
+    # Service security metrics
+    - job_name: 'auth-service-security'
+      static_configs:
+        - targets: ['auth-service:3001']
+      scrape_interval: 30s
+      metrics_path: '/metrics'
+      
+    - job_name: 'linkedin-service-security'
+      static_configs:
+        - targets: ['linkedin-service:3003']
+      scrape_interval: 15s  # More frequent for compliance monitoring
+      metrics_path: '/metrics'
+      
+    - job_name: 'user-service-security'
+      static_configs:
+        - targets: ['user-service:3002']
+      scrape_interval: 30s
+      metrics_path: '/metrics'
+      
+    - job_name: 'analytics-service-security'
+      static_configs:
+        - targets: ['analytics-service:3004']
+      scrape_interval: 30s
+      metrics_path: '/metrics'
+      
+    - job_name: 'ai-service-security'
+      static_configs:
+        - targets: ['ai-service:3005']
+      scrape_interval: 60s
+      metrics_path: '/metrics'
+      
+    # Database security metrics
+    - job_name: 'postgres-security'
+      static_configs:
+        - targets: ['postgres-exporter:9187']
+      scrape_interval: 30s
+      
+    - job_name: 'redis-security'
+      static_configs:
+        - targets: ['redis-exporter:9121']
+      scrape_interval: 30s
+      
+    # Container security metrics
+    - job_name: 'docker-security'
+      static_configs:
+        - targets: ['cadvisor:8080']
+      scrape_interval: 30s
+      
+    # Node security metrics
+    - job_name: 'node-security'
+      static_configs:
+        - targets: ['node-exporter:9100']
+      scrape_interval: 30s
+
+# Alertmanager Configuration for Security Incidents
+alertmanager:
+  global:
+    smtp_smarthost: '${SMTP_HOST:-localhost:587}'
+    smtp_from: 'security@inergize.com'
+    slack_api_url: '${SLACK_WEBHOOK_URL}'
+    
+  templates:
+    - '/etc/alertmanager/templates/*.tmpl'
+    
+  route:
+    group_by: ['alertname', 'service', 'severity']
+    group_wait: 10s
+    group_interval: 10s
+    repeat_interval: 1h
+    receiver: 'security-team'
+    
+    routes:
+      # Critical security incidents - immediate response
+      - match:
+          severity: critical
+        receiver: 'security-critical'
+        group_wait: 0s
+        repeat_interval: 5m
+        
+      # LinkedIn compliance issues - specialized handling
+      - match:
+          service: linkedin
+        receiver: 'linkedin-compliance-team'
+        group_wait: 30s
+        repeat_interval: 15m
+        
+      # Authentication issues
+      - match:
+          service: auth
+        receiver: 'auth-security-team'
+        group_wait: 30s
+        repeat_interval: 10m
+        
+      # Data breach indicators
+      - match_re:
+          alertname: '.*data_breach.*|.*unauthorized_access.*|.*pii_exposure.*'
+        receiver: 'data-breach-response'
+        group_wait: 0s
+        repeat_interval: 1m
+        
+  receivers:
+    - name: 'security-team'
+      email_configs:
+        - to: 'security@inergize.com'
+          subject: '[SECURITY] {{ .GroupLabels.alertname }} - {{ .GroupLabels.severity }}'
+          body: |
+            {{ range .Alerts }}
+            Alert: {{ .Annotations.summary }}
+            Description: {{ .Annotations.description }}
+            Service: {{ .Labels.service }}
+            Instance: {{ .Labels.instance }}
+            Severity: {{ .Labels.severity }}
+            {{ end }}
+      slack_configs:
+        - channel: '#security-alerts'
+          title: 'InErgize Security Alert'
+          text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+          
+    - name: 'security-critical'
+      email_configs:
+        - to: 'security@inergize.com,cto@inergize.com,ceo@inergize.com'
+          subject: '[CRITICAL SECURITY] {{ .GroupLabels.alertname }}'
+          body: |
+            CRITICAL SECURITY INCIDENT DETECTED
+            
+            {{ range .Alerts }}
+            Alert: {{ .Annotations.summary }}
+            Description: {{ .Annotations.description }}
+            Service: {{ .Labels.service }}
+            Instance: {{ .Labels.instance }}
+            Time: {{ .StartsAt }}
+            
+            IMMEDIATE ACTION REQUIRED
+            {{ end }}
+      slack_configs:
+        - channel: '#security-critical'
+          title: '🚨 CRITICAL SECURITY ALERT 🚨'
+          text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+          color: 'danger'
+      pagerduty_configs:
+        - routing_key: '${PAGERDUTY_SECURITY_KEY}'
+          description: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+          
+    - name: 'linkedin-compliance-team'
+      email_configs:
+        - to: 'compliance@inergize.com,legal@inergize.com'
+          subject: '[LINKEDIN COMPLIANCE] {{ .GroupLabels.alertname }}'
+          body: |
+            LinkedIn Compliance Issue Detected
+            
+            {{ range .Alerts }}
+            Alert: {{ .Annotations.summary }}
+            Description: {{ .Annotations.description }}
+            Health Score: {{ .Labels.health_score }}
+            Rate Limit Status: {{ .Labels.rate_limit_status }}
+            Time: {{ .StartsAt }}
+            {{ end }}
+      slack_configs:
+        - channel: '#linkedin-compliance'
+          title: 'LinkedIn Compliance Alert'
+          text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+          color: 'warning'
+          
+    - name: 'auth-security-team'
+      email_configs:
+        - to: 'security@inergize.com,backend@inergize.com'
+          subject: '[AUTH SECURITY] {{ .GroupLabels.alertname }}'
+      slack_configs:
+        - channel: '#auth-security'
+          title: 'Authentication Security Alert'
+          text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+          
+    - name: 'data-breach-response'
+      email_configs:
+        - to: 'security@inergize.com,legal@inergize.com,ceo@inergize.com,dpo@inergize.com'
+          subject: '[POTENTIAL DATA BREACH] {{ .GroupLabels.alertname }}'
+          body: |
+            POTENTIAL DATA BREACH DETECTED
+            
+            {{ range .Alerts }}
+            Alert: {{ .Annotations.summary }}
+            Description: {{ .Annotations.description }}
+            Service: {{ .Labels.service }}
+            Time: {{ .StartsAt }}
+            
+            GDPR/SOC2 INCIDENT RESPONSE ACTIVATED
+            {{ end }}
+      slack_configs:
+        - channel: '#data-breach-response'
+          title: '🔴 POTENTIAL DATA BREACH 🔴'
+          text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+          color: 'danger'
+      pagerduty_configs:
+        - routing_key: '${PAGERDUTY_BREACH_KEY}'
+          description: 'Potential data breach: {{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+
+# Grafana Security Dashboards
+grafana:
+  datasources:
+    - name: Prometheus
+      type: prometheus
+      url: http://prometheus:9090
+      access: proxy
+      isDefault: true
+      
+    - name: Elasticsearch-Logs
+      type: elasticsearch
+      url: http://elasticsearch:9200
+      access: proxy
+      database: "logs-*"
+      
+  dashboards:
+    - name: "Security Overview"
+      panels:
+        - title: "Authentication Failures"
+          type: stat
+          targets:
+            - expr: 'sum(rate(auth_login_failures_total[5m]))'
+          thresholds:
+            - color: green
+              value: 0
+            - color: yellow
+              value: 10
+            - color: red
+              value: 50
+              
+        - title: "LinkedIn Compliance Health"
+          type: gauge
+          targets:
+            - expr: 'avg(linkedin_health_score)'
+          thresholds:
+            - color: red
+              value: 0
+            - color: yellow
+              value: 40
+            - color: green
+              value: 80
+              
+        - title: "API Rate Limit Violations"
+          type: graph
+          targets:
+            - expr: 'sum by (service) (rate(kong_http_status{code="429"}[5m]))'
+            
+        - title: "Suspicious IP Activity"
+          type: table
+          targets:
+            - expr: 'topk(10, sum by (ip) (rate(suspicious_requests_total[1h])))'
+            
+        - title: "Data Access Patterns"
+          type: heatmap
+          targets:
+            - expr: 'sum by (service, endpoint) (rate(data_access_total[5m]))'
+            
+    - name: "LinkedIn Compliance Dashboard"
+      panels:
+        - title: "Connection Requests per Day"
+          type: graph
+          targets:
+            - expr: 'sum(increase(linkedin_connections_sent_total[1d]))'
+          alert:
+            conditions:
+              - query: A
+                reducer: last
+                type: query
+            executionErrorState: alerting
+            frequency: 60s
+            handler: 1
+            name: "Daily Connection Limit"
+            noDataState: no_data
+            
+        - title: "API Response Times"
+          type: graph
+          targets:
+            - expr: 'histogram_quantile(0.95, sum(rate(linkedin_api_duration_seconds_bucket[5m])) by (le))'
+            
+        - title: "Health Score Trend"
+          type: graph
+          targets:
+            - expr: 'linkedin_health_score'
+            
+        - title: "Rate Limit Status"
+          type: table
+          targets:
+            - expr: 'linkedin_rate_limit_remaining'
+            
+    - name: "Database Security"
+      panels:
+        - title: "Database Connections"
+          type: graph
+          targets:
+            - expr: 'pg_stat_database_numbackends'
+            
+        - title: "Failed Login Attempts"
+          type: stat
+          targets:
+            - expr: 'sum(rate(pg_stat_database_xact_rollback[5m]))'
+            
+        - title: "Query Performance"
+          type: graph
+          targets:
+            - expr: 'rate(pg_stat_statements_total_time[5m])'
+            
+        - title: "Lock Waits"
+          type: graph
+          targets:
+            - expr: 'pg_locks_count'
+
+# ELK Stack Security Configuration
+elasticsearch:
+  security:
+    monitoring:
+      # Security event indices
+      indices:
+        - name: "security-events-*"
+          template:
+            index_patterns: ["security-events-*"]
+            settings:
+              number_of_shards: 3
+              number_of_replicas: 1
+              index.lifecycle.name: "security-events-policy"
+            mappings:
+              properties:
+                timestamp:
+                  type: date
+                event_type:
+                  type: keyword
+                severity:
+                  type: keyword
+                service:
+                  type: keyword
+                user_id:
+                  type: keyword
+                ip_address:
+                  type: ip
+                user_agent:
+                  type: text
+                details:
+                  type: object
+                  enabled: false
+                  
+        - name: "audit-logs-*"
+          template:
+            index_patterns: ["audit-logs-*"]
+            settings:
+              number_of_shards: 5
+              number_of_replicas: 2
+              index.lifecycle.name: "audit-logs-policy"
+              
+      # ILM policies for security data retention
+      lifecycle_policies:
+        - name: "security-events-policy"
+          policy:
+            phases:
+              hot:
+                actions:
+                  rollover:
+                    max_size: "10GB"
+                    max_age: "1d"
+              warm:
+                min_age: "7d"
+                actions:
+                  allocate:
+                    number_of_replicas: 0
+              cold:
+                min_age: "30d"
+                actions:
+                  allocate:
+                    number_of_replicas: 0
+              delete:
+                min_age: "90d"
+                
+        - name: "audit-logs-policy"
+          policy:
+            phases:
+              hot:
+                actions:
+                  rollover:
+                    max_size: "50GB"
+                    max_age: "1d"
+              warm:
+                min_age: "30d"
+                actions:
+                  allocate:
+                    number_of_replicas: 1
+              cold:
+                min_age: "90d"
+                actions:
+                  allocate:
+                    number_of_replicas: 0
+              delete:
+                min_age: "2555d"  # 7 years for SOC2 compliance
+
+# Logstash Security Processing
+logstash:
+  pipelines:
+    - name: security-events
+      config: |
+        input {
+          beats {
+            port => 5044
+          }
+          http {
+            port => 8080
+            codec => json
+          }
+        }
+        
+        filter {
+          if [service] == "auth-service" {
+            if [message] =~ /login.*failed/i {
+              mutate {
+                add_field => { "event_type" => "authentication_failure" }
+                add_field => { "severity" => "warning" }
+              }
+              
+              # Check for brute force patterns
+              if [ip_address] {
+                aggregate {
+                  task_id => "%{ip_address}"
+                  code => "
+                    map['count'] ||= 0
+                    map['count'] += 1
+                    if map['count'] > 10
+                      event.set('severity', 'critical')
+                      event.set('event_type', 'brute_force_attack')
+                    end
+                  "
+                  push_map_as_event_on_timeout => true
+                  timeout => 300
+                }
+              }
+            }
+          }
+          
+          if [service] == "linkedin-service" {
+            if [message] =~ /rate.limit/i {
+              mutate {
+                add_field => { "event_type" => "linkedin_rate_limit" }
+                add_field => { "severity" => "warning" }
+              }
+            }
+            
+            if [message] =~ /compliance.*violation/i {
+              mutate {
+                add_field => { "event_type" => "linkedin_compliance_violation" }
+                add_field => { "severity" => "critical" }
+              }
+            }
+          }
+          
+          # GeoIP enrichment for suspicious activity detection
+          if [ip_address] {
+            geoip {
+              source => "ip_address"
+              target => "geoip"
+            }
+            
+            # Flag requests from high-risk countries
+            if [geoip][country_code2] in ["CN", "RU", "KP", "IR"] {
+              mutate {
+                add_field => { "risk_level" => "high" }
+                add_field => { "risk_reason" => "high_risk_country" }
+              }
+            }
+          }
+          
+          # User agent analysis for bot detection
+          if [user_agent] {
+            useragent {
+              source => "user_agent"
+              target => "ua"
+            }
+            
+            if [ua][name] in ["curl", "wget", "python-requests"] {
+              mutate {
+                add_field => { "bot_detected" => "true" }
+                add_field => { "risk_level" => "medium" }
+              }
+            }
+          }
+          
+          # Add timestamp
+          date {
+            match => [ "timestamp", "ISO8601" ]
+          }
+        }
+        
+        output {
+          elasticsearch {
+            hosts => ["elasticsearch:9200"]
+            index => "security-events-%{+YYYY.MM.dd}"
+            template_name => "security-events"
+          }
+          
+          # Send critical events to alerting system
+          if [severity] == "critical" {
+            http {
+              url => "http://alertmanager:9093/api/v1/alerts"
+              http_method => "post"
+              content_type => "application/json"
+              mapping => {
+                "alert" => "%{event_type}"
+                "severity" => "%{severity}"
+                "service" => "%{service}"
+                "description" => "%{message}"
+                "instance" => "%{host}"
+              }
+            }
+          }
+        }
+
+# Kibana Security Visualizations
+kibana:
+  security_visualizations:
+    - name: "Security Events Dashboard"
+      objects:
+        - type: dashboard
+          attributes:
+            title: "InErgize Security Overview"
+            panelsJSON: |
+              [
+                {
+                  "type": "visualization",
+                  "title": "Security Events by Severity",
+                  "visState": {
+                    "type": "pie",
+                    "params": {
+                      "addTooltip": true,
+                      "addLegend": true,
+                      "legendPosition": "right"
+                    }
+                  }
+                },
+                {
+                  "type": "visualization", 
+                  "title": "Authentication Failures by IP",
+                  "visState": {
+                    "type": "data_table",
+                    "params": {
+                      "perPage": 10,
+                      "showPartialRows": false,
+                      "sort": {
+                        "columnIndex": 1,
+                        "direction": "desc"
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "visualization",
+                  "title": "LinkedIn Compliance Timeline",
+                  "visState": {
+                    "type": "line",
+                    "params": {
+                      "grid": {
+                        "categoryLines": false,
+                        "style": {
+                          "color": "#eee"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+
+# Automated Incident Response
+incident_response:
+  playbooks:
+    - name: "brute_force_attack"
+      triggers:
+        - event_type: "brute_force_attack"
+      actions:
+        - type: "block_ip"
+          duration: "1h"
+          service: "kong"
+        - type: "notify"
+          channels: ["slack", "email"]
+        - type: "create_ticket"
+          system: "jira"
+          priority: "high"
+          
+    - name: "linkedin_compliance_violation"
+      triggers:
+        - event_type: "linkedin_compliance_violation"
+      actions:
+        - type: "pause_automation"
+          service: "linkedin-service"
+          duration: "24h"
+        - type: "notify"
+          channels: ["slack", "email", "pagerduty"]
+        - type: "create_incident"
+          system: "opsgenie"
+          priority: "critical"
+          
+    - name: "data_breach_indicator"
+      triggers:
+        - event_type: "unauthorized_data_access"
+        - event_type: "privilege_escalation"
+        - event_type: "data_exfiltration"
+      actions:
+        - type: "isolate_service"
+          service: "all"
+        - type: "backup_audit_logs"
+        - type: "notify_legal"
+        - type: "activate_breach_response"
+        
+  automation_rules:
+    - name: "auto_block_suspicious_ips"
+      condition: "failed_logins > 20 in 5 minutes"
+      action: "block_ip_24h"
+      
+    - name: "linkedin_health_score_low"
+      condition: "linkedin_health_score < 40"
+      action: "pause_linkedin_automation"
+      
+    - name: "high_error_rate"
+      condition: "error_rate > 5% for 2 minutes"
+      action: "scale_up_service"
+
+# Security Metrics and KPIs
+security_kpis:
+  metrics:
+    - name: "mean_time_to_detection"
+      target: "< 5 minutes"
+      
+    - name: "mean_time_to_response"
+      target: "< 15 minutes"
+      
+    - name: "false_positive_rate"
+      target: "< 2%"
+      
+    - name: "linkedin_compliance_score"
+      target: "> 95%"
+      
+    - name: "authentication_success_rate"
+      target: "> 99.5%"
+      
+    - name: "data_breach_incidents"
+      target: "0 per quarter"
+      
+  reporting:
+    frequency: "weekly"
+    recipients: ["security@inergize.com", "cto@inergize.com"]
+    format: "pdf"
+    include_recommendations: true

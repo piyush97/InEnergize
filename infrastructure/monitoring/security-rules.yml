@@ -1,0 +1,444 @@
+# Security Monitoring Rules for InErgize
+# Defines security events, thresholds, and automated responses
+
+# LinkedIn Compliance Rules
+linkedin_compliance:
+  rate_limiting:
+    # Ultra-conservative rate limits (15% of LinkedIn's limits)
+    automation_requests:
+      per_minute: 1
+      per_hour: 15
+      per_day: 100
+      violation_threshold: 1  # Any violation triggers alert
+      
+    profile_views:
+      per_hour: 25
+      per_day: 150
+      violation_threshold: 2
+      
+    connections:
+      per_day: 15
+      per_week: 50
+      violation_threshold: 1
+      
+    likes:
+      per_hour: 30
+      per_day: 200
+      violation_threshold: 3
+      
+    comments:
+      per_day: 8
+      per_week: 30
+      violation_threshold: 1
+
+  health_scoring:
+    thresholds:
+      healthy: 80-100
+      warning: 60-79
+      critical: 40-59
+      emergency: 0-39
+    
+    degradation_factors:
+      rate_limit_violation: -10
+      api_error: -5
+      timeout: -3
+      suspicious_pattern: -15
+      
+    recovery_factors:
+      successful_request: +1
+      compliance_period_24h: +5
+      manual_review_passed: +10
+
+  automated_actions:
+    health_score_40:
+      action: "suspend_automation"
+      duration: "1h"
+      notification: "critical"
+      
+    health_score_20:
+      action: "suspend_automation"
+      duration: "24h"
+      notification: "emergency"
+      
+    rate_limit_violation:
+      action: "delay_next_request"
+      delay: "5m"
+      notification: "warning"
+
+# Security Threat Detection
+threat_detection:
+  brute_force:
+    login_attempts:
+      threshold: 5
+      window: "5m"
+      action: "block_ip"
+      duration: "30m"
+      
+    password_reset:
+      threshold: 3
+      window: "1h"
+      action: "rate_limit"
+      duration: "1h"
+      
+    api_key_attempts:
+      threshold: 10
+      window: "1m"
+      action: "block_ip"
+      duration: "1h"
+
+  ddos_protection:
+    request_rate:
+      threshold: 100
+      window: "1m"
+      action: "rate_limit"
+      severity: "high"
+      
+    concurrent_connections:
+      threshold: 50
+      per_ip: true
+      action: "connection_limit"
+      severity: "medium"
+      
+    bandwidth:
+      threshold: "100MB"
+      window: "1m"
+      action: "traffic_shape"
+      severity: "medium"
+
+  malicious_patterns:
+    sql_injection:
+      patterns:
+        - "union.*select"
+        - "or.*1=1"
+        - "drop.*table"
+        - "exec.*xp_"
+      action: "block_request"
+      severity: "critical"
+      
+    xss_attempts:
+      patterns:
+        - "<script"
+        - "javascript:"
+        - "onload="
+        - "onerror="
+      action: "block_request"
+      severity: "high"
+      
+    path_traversal:
+      patterns:
+        - "../"
+        - "..\\/"
+        - "%2e%2e"
+        - "..%2f"
+      action: "block_request"
+      severity: "high"
+
+  bot_detection:
+    suspicious_user_agents:
+      patterns:
+        - "sqlmap"
+        - "nikto"
+        - "nmap"
+        - "curl"
+        - "wget"
+        - "python-requests"
+      action: "challenge"
+      severity: "medium"
+      
+    automation_patterns:
+      requests_per_second: 10
+      identical_requests: 5
+      missing_headers: ["User-Agent", "Accept"]
+      action: "challenge"
+      severity: "medium"
+
+# System Security Monitoring
+system_security:
+  file_integrity:
+    critical_files:
+      - "/etc/passwd"
+      - "/etc/shadow"
+      - "/etc/ssh/sshd_config"
+      - "/etc/ssl/private/*"
+      - "/app/config/*"
+    check_interval: "5m"
+    action: "alert"
+    severity: "critical"
+    
+  privilege_escalation:
+    sudo_usage:
+      threshold: 5
+      window: "1h"
+      action: "alert"
+      severity: "high"
+      
+    root_login:
+      direct_login: true
+      action: "alert"
+      severity: "critical"
+      
+    setuid_changes:
+      monitor: true
+      action: "alert"
+      severity: "high"
+
+  network_security:
+    port_scan_detection:
+      threshold: 10
+      window: "30s"
+      action: "block_ip"
+      duration: "1h"
+      severity: "high"
+      
+    unusual_network_traffic:
+      outbound_connections:
+        threshold: 100
+        window: "5m"
+        action: "alert"
+        severity: "medium"
+        
+      data_exfiltration:
+        threshold: "1GB"
+        window: "1h"
+        action: "alert"
+        severity: "critical"
+
+# Application Security
+application_security:
+  authentication:
+    failed_logins:
+      threshold: 5
+      window: "5m"
+      per_user: true
+      action: "account_lock"
+      duration: "15m"
+      severity: "medium"
+      
+    token_abuse:
+      invalid_tokens:
+        threshold: 10
+        window: "1m"
+        action: "rate_limit"
+        severity: "medium"
+        
+      token_reuse:
+        expired_tokens:
+          threshold: 5
+          window: "1m"
+          action: "alert"
+          severity: "low"
+
+  data_access:
+    sensitive_data_access:
+      pii_access:
+        threshold: 100
+        window: "1h"
+        per_user: true
+        action: "alert"
+        severity: "medium"
+        
+      bulk_data_export:
+        threshold: 1000
+        window: "5m"
+        action: "alert"
+        severity: "high"
+        
+    unauthorized_access:
+      privilege_violation:
+        action: "alert"
+        severity: "critical"
+        
+      resource_access_denied:
+        threshold: 10
+        window: "5m"
+        action: "alert"
+        severity: "medium"
+
+# Infrastructure Security
+infrastructure_security:
+  container_security:
+    runtime_anomalies:
+      process_monitoring:
+        unexpected_processes: true
+        action: "alert"
+        severity: "high"
+        
+      filesystem_changes:
+        read_only_violations: true
+        action: "alert"
+        severity: "medium"
+        
+    resource_abuse:
+      cpu_usage:
+        threshold: 90
+        window: "5m"
+        action: "alert"
+        severity: "medium"
+        
+      memory_usage:
+        threshold: 90
+        window: "5m"
+        action: "alert"
+        severity: "medium"
+
+  secrets_management:
+    secret_access:
+      failed_retrievals:
+        threshold: 5
+        window: "1m"
+        action: "alert"
+        severity: "high"
+        
+      unauthorized_access:
+        action: "alert"
+        severity: "critical"
+        
+    secret_rotation:
+      overdue_rotation:
+        threshold: "30d"
+        action: "alert"
+        severity: "medium"
+        
+      rotation_failures:
+        action: "alert"
+        severity: "high"
+
+# Compliance Monitoring
+compliance_monitoring:
+  gdpr:
+    data_processing:
+      consent_violations:
+        action: "alert"
+        severity: "critical"
+        
+      data_retention:
+        threshold: "2y"  # GDPR maximum
+        action: "alert"
+        severity: "high"
+        
+    data_breaches:
+      detection_time: "72h"  # GDPR notification requirement
+      action: "emergency_alert"
+      severity: "critical"
+
+  soc2:
+    access_controls:
+      unauthorized_access:
+        action: "alert"
+        severity: "high"
+        
+      privilege_changes:
+        action: "alert"
+        severity: "medium"
+        
+    data_encryption:
+      unencrypted_data:
+        action: "alert"
+        severity: "critical"
+        
+      weak_encryption:
+        action: "alert"
+        severity: "high"
+
+  pci_dss:
+    cardholder_data:
+      access_monitoring:
+        action: "alert"
+        severity: "critical"
+        
+      transmission_security:
+        unencrypted_transmission:
+          action: "block"
+          severity: "critical"
+
+# Alert Routing and Response
+alert_routing:
+  severity_mapping:
+    emergency:
+      channels: ["pagerduty", "phone", "email", "slack"]
+      escalation: "immediate"
+      
+    critical:
+      channels: ["pagerduty", "email", "slack"]
+      escalation: "15m"
+      
+    high:
+      channels: ["email", "slack"]
+      escalation: "1h"
+      
+    medium:
+      channels: ["slack", "email"]
+      escalation: "4h"
+      
+    low:
+      channels: ["email"]
+      escalation: "24h"
+
+  notification_targets:
+    security_team:
+      email: "security@inergize.com"
+      slack: "#security-alerts"
+      pagerduty: "security-escalation"
+      
+    devops_team:
+      email: "devops@inergize.com"
+      slack: "#devops-alerts"
+      pagerduty: "infrastructure-escalation"
+      
+    compliance_team:
+      email: "compliance@inergize.com"
+      slack: "#compliance-alerts"
+
+  automated_responses:
+    block_ip:
+      provider: "cloudflare"
+      api_key: "${CLOUDFLARE_API_KEY}"
+      duration_mapping:
+        "15m": "challenge"
+        "1h": "block"
+        "24h": "ban"
+        
+    rate_limit:
+      provider: "kong"
+      api_url: "http://kong:8001"
+      
+    suspend_user:
+      provider: "auth_service"
+      api_url: "http://auth-service:3001"
+
+# Metrics and KPIs
+security_metrics:
+  response_times:
+    alert_detection: "< 30s"
+    alert_response: "< 5m"
+    incident_resolution: "< 4h"
+    
+  false_positive_rates:
+    target: "< 5%"
+    measurement_window: "7d"
+    
+  coverage_metrics:
+    monitored_services: "100%"
+    monitored_endpoints: "> 95%"
+    log_coverage: "> 90%"
+
+# Reporting and Dashboards
+reporting:
+  security_dashboard:
+    refresh_interval: "30s"
+    widgets:
+      - "threat_overview"
+      - "linkedin_compliance_status"
+      - "alert_summary"
+      - "system_health"
+      - "vulnerability_scanner_results"
+      
+  compliance_reports:
+    frequency: "weekly"
+    recipients: ["compliance@inergize.com"]
+    formats: ["pdf", "json"]
+    
+  executive_summary:
+    frequency: "monthly"
+    recipients: ["cto@inergize.com", "ceo@inergize.com"]
+    format: "pdf"

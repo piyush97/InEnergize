@@ -1,0 +1,534 @@
+# Performance Monitoring and Service Level Objectives (SLOs)
+# Enterprise-grade monitoring with automated scaling triggers
+
+---
+# SLO Configuration for InErgize Services
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  name: inergize-services-slo
+  namespace: inergize-production
+  labels:
+    environment: production
+    component: slo-monitoring
+spec:
+  service: "inergize-platform"
+  labels:
+    team: "sre"
+    environment: "production"
+  slos:
+    # Auth Service SLO
+    - name: "auth-service-availability"
+      objective: 99.9
+      description: "Auth service availability SLO"
+      sli:
+        events:
+          errorQuery: |
+            sum(rate(http_requests_total{service="auth-service",code=~"5.."}[5m]))
+          totalQuery: |
+            sum(rate(http_requests_total{service="auth-service"}[5m]))
+      alerting:
+        name: AuthServiceHighErrorRate
+        labels:
+          severity: critical
+          service: auth-service
+        annotations:
+          summary: "Auth service error rate too high"
+          runbook: "https://docs.inergize.com/runbooks/auth-service-errors"
+        pageAlert:
+          labels:
+            severity: critical
+            escalation: immediate
+    
+    - name: "auth-service-latency"
+      objective: 95.0
+      description: "Auth service latency SLO - 95% of requests under 200ms"
+      sli:
+        events:
+          errorQuery: |
+            sum(rate(http_request_duration_seconds_bucket{service="auth-service",le="0.2"}[5m]))
+          totalQuery: |
+            sum(rate(http_request_duration_seconds_count{service="auth-service"}[5m]))
+      alerting:
+        name: AuthServiceHighLatency
+        labels:
+          severity: warning
+          service: auth-service
+    
+    # LinkedIn Service SLO (Critical for compliance)
+    - name: "linkedin-service-availability"
+      objective: 99.95  # Higher availability for compliance
+      description: "LinkedIn service availability SLO"
+      sli:
+        events:
+          errorQuery: |
+            sum(rate(http_requests_total{service="linkedin-service",code=~"5.."}[5m]))
+          totalQuery: |
+            sum(rate(http_requests_total{service="linkedin-service"}[5m]))
+      alerting:
+        name: LinkedInServiceHighErrorRate
+        labels:
+          severity: critical
+          service: linkedin-service
+          compliance: critical
+        annotations:
+          summary: "LinkedIn service error rate exceeds SLO"
+          description: "Error rate impacts compliance monitoring"
+        pageAlert:
+          labels:
+            severity: critical
+            escalation: immediate
+            compliance: emergency
+    
+    - name: "linkedin-compliance-slo"
+      objective: 99.0
+      description: "LinkedIn compliance score SLO"
+      sli:
+        events:
+          errorQuery: |
+            sum(increase(linkedin_compliance_violations_total[5m]))
+          totalQuery: |
+            sum(increase(linkedin_compliance_checks_total[5m]))
+      alerting:
+        name: LinkedInComplianceViolationRate
+        labels:
+          severity: critical
+          compliance: violation
+    
+    # Analytics Service SLO
+    - name: "analytics-service-availability"
+      objective: 99.5
+      description: "Analytics service availability SLO"
+      sli:
+        events:
+          errorQuery: |
+            sum(rate(http_requests_total{service="analytics-service",code=~"5.."}[5m]))
+          totalQuery: |
+            sum(rate(http_requests_total{service="analytics-service"}[5m]))
+      alerting:
+        name: AnalyticsServiceHighErrorRate
+        labels:
+          severity: warning
+          service: analytics-service
+    
+    - name: "analytics-query-performance"
+      objective: 90.0
+      description: "Analytics queries under 1 second SLO"
+      sli:
+        events:
+          errorQuery: |
+            sum(rate(analytics_query_duration_seconds_bucket{le="1.0"}[5m]))
+          totalQuery: |
+            sum(rate(analytics_query_duration_seconds_count[5m]))
+      alerting:
+        name: AnalyticsSlowQueries
+        labels:
+          severity: warning
+          service: analytics-service
+    
+    # AI Service SLO
+    - name: "ai-service-availability"
+      objective: 99.0
+      description: "AI service availability SLO"
+      sli:
+        events:
+          errorQuery: |
+            sum(rate(http_requests_total{service="ai-service",code=~"5.."}[5m]))
+          totalQuery: |
+            sum(rate(http_requests_total{service="ai-service"}[5m]))
+      alerting:
+        name: AIServiceHighErrorRate
+        labels:
+          severity: warning
+          service: ai-service
+    
+    - name: "ai-generation-latency"
+      objective: 85.0
+      description: "AI content generation under 10 seconds SLO"
+      sli:
+        events:
+          errorQuery: |
+            sum(rate(ai_generation_duration_seconds_bucket{le="10.0"}[5m]))
+          totalQuery: |
+            sum(rate(ai_generation_duration_seconds_count[5m]))
+      alerting:
+        name: AIGenerationSlow
+        labels:
+          severity: warning
+          service: ai-service
+
+---
+# Performance Monitoring Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: performance-monitoring-config
+  namespace: inergize-production
+  labels:
+    component: performance-monitoring
+data:
+  recording-rules.yml: |
+    groups:
+      - name: inergize.performance.recording
+        interval: 15s
+        rules:
+          # Request rate calculations
+          - record: inergize:http_requests:rate5m
+            expr: |
+              sum(rate(http_requests_total[5m])) by (service, method, code)
+          
+          - record: inergize:http_requests:rate1h
+            expr: |
+              sum(rate(http_requests_total[1h])) by (service, method, code)
+          
+          # Error rate calculations
+          - record: inergize:http_requests:error_rate5m
+            expr: |
+              sum(rate(http_requests_total{code=~"5.."}[5m])) by (service)
+              /
+              sum(rate(http_requests_total[5m])) by (service)
+          
+          # Latency percentiles
+          - record: inergize:http_request_duration:p95_5m
+            expr: |
+              histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (service, le))
+          
+          - record: inergize:http_request_duration:p99_5m
+            expr: |
+              histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (service, le))
+          
+          # Database performance
+          - record: inergize:database_connections:utilization
+            expr: |
+              (
+                sum(database_connections_active) by (database)
+                /
+                sum(database_connections_max) by (database)
+              ) * 100
+          
+          - record: inergize:database_query_duration:p95_5m
+            expr: |
+              histogram_quantile(0.95, sum(rate(database_query_duration_seconds_bucket[5m])) by (database, query_type, le))
+          
+          # LinkedIn specific metrics
+          - record: inergize:linkedin:api_calls_rate_1h
+            expr: |
+              sum(increase(linkedin_api_calls_total[1h]))
+          
+          - record: inergize:linkedin:compliance_score_avg
+            expr: |
+              avg_over_time(linkedin_compliance_score[5m])
+          
+          # Resource utilization
+          - record: inergize:cpu_utilization:avg5m
+            expr: |
+              avg(rate(container_cpu_usage_seconds_total[5m])) by (pod, container)
+          
+          - record: inergize:memory_utilization:current
+            expr: |
+              (
+                container_memory_working_set_bytes
+                /
+                container_spec_memory_limit_bytes
+              ) * 100
+          
+          # Queue depths and processing rates
+          - record: inergize:queue_depth:current
+            expr: |
+              sum(redis_list_length) by (queue_name)
+          
+          - record: inergize:queue_processing_rate:5m
+            expr: |
+              sum(rate(queue_jobs_processed_total[5m])) by (queue_name, status)
+
+  alert-rules.yml: |
+    groups:
+      - name: inergize.performance.alerts
+        rules:
+          # High-level service performance alerts
+          - alert: ServiceHighErrorRate
+            expr: inergize:http_requests:error_rate5m > 0.05
+            for: 2m
+            labels:
+              severity: warning
+              team: sre
+            annotations:
+              summary: "High error rate detected for {{ $labels.service }}"
+              description: |
+                Service {{ $labels.service }} has an error rate of {{ $value | humanizePercentage }}
+                which is above the 5% threshold.
+              dashboard: "https://grafana.inergize.com/d/service-overview/{{ $labels.service }}"
+          
+          - alert: ServiceVeryHighErrorRate
+            expr: inergize:http_requests:error_rate5m > 0.10
+            for: 1m
+            labels:
+              severity: critical
+              team: sre
+              escalation: immediate
+            annotations:
+              summary: "Very high error rate for {{ $labels.service }}"
+              description: |
+                Service {{ $labels.service }} has a critical error rate of {{ $value | humanizePercentage }}
+                which requires immediate attention.
+          
+          # Latency alerts
+          - alert: ServiceHighLatency
+            expr: inergize:http_request_duration:p95_5m > 1.0
+            for: 3m
+            labels:
+              severity: warning
+              team: sre
+            annotations:
+              summary: "High latency for {{ $labels.service }}"
+              description: |
+                95th percentile latency for {{ $labels.service }} is {{ $value }}s
+                which exceeds the 1 second threshold.
+          
+          - alert: ServiceVeryHighLatency
+            expr: inergize:http_request_duration:p95_5m > 5.0
+            for: 1m
+            labels:
+              severity: critical
+              team: sre
+            annotations:
+              summary: "Very high latency for {{ $labels.service }}"
+              description: |
+                95th percentile latency for {{ $labels.service }} is {{ $value }}s
+                which is critically high and impacts user experience.
+          
+          # Database performance alerts
+          - alert: DatabaseConnectionsHigh
+            expr: inergize:database_connections:utilization > 80
+            for: 5m
+            labels:
+              severity: warning
+              team: sre
+              component: database
+            annotations:
+              summary: "Database connection utilization high"
+              description: |
+                Database {{ $labels.database }} connection utilization is {{ $value }}%
+                which may lead to connection exhaustion.
+          
+          - alert: DatabaseSlowQueries
+            expr: inergize:database_query_duration:p95_5m > 2.0
+            for: 3m
+            labels:
+              severity: warning
+              team: sre
+              component: database
+            annotations:
+              summary: "Slow database queries detected"
+              description: |
+                Database {{ $labels.database }} has slow queries with 95th percentile duration of {{ $value }}s
+          
+          # Resource utilization alerts
+          - alert: HighCPUUtilization
+            expr: inergize:cpu_utilization:avg5m > 0.80
+            for: 5m
+            labels:
+              severity: warning
+              team: sre
+              component: infrastructure
+            annotations:
+              summary: "High CPU utilization in {{ $labels.pod }}"
+              description: |
+                Pod {{ $labels.pod }} container {{ $labels.container }} CPU utilization is {{ $value | humanizePercentage }}
+          
+          - alert: HighMemoryUtilization
+            expr: inergize:memory_utilization:current > 85
+            for: 3m
+            labels:
+              severity: warning
+              team: sre
+              component: infrastructure
+            annotations:
+              summary: "High memory utilization in {{ $labels.pod }}"
+              description: |
+                Pod {{ $labels.pod }} memory utilization is {{ $value }}%
+                which may lead to OOM kills.
+          
+          # Queue performance alerts
+          - alert: QueueBacklogHigh
+            expr: inergize:queue_depth:current > 1000
+            for: 2m
+            labels:
+              severity: warning
+              team: sre
+              component: queue
+            annotations:
+              summary: "High queue backlog for {{ $labels.queue_name }}"
+              description: |
+                Queue {{ $labels.queue_name }} has {{ $value }} items pending
+                which may indicate processing issues.
+          
+          - alert: QueueProcessingStalled
+            expr: rate(queue_jobs_processed_total[5m]) == 0 and inergize:queue_depth:current > 0
+            for: 5m
+            labels:
+              severity: critical
+              team: sre
+              component: queue
+            annotations:
+              summary: "Queue processing stalled for {{ $labels.queue_name }}"
+              description: |
+                Queue {{ $labels.queue_name }} has pending items but no processing activity
+                for the last 5 minutes.
+          
+          # LinkedIn-specific performance alerts
+          - alert: LinkedInServiceSlowResponse
+            expr: inergize:http_request_duration:p95_5m{service="linkedin-service"} > 5.0
+            for: 1m
+            labels:
+              severity: critical
+              service: linkedin-service
+              compliance: performance
+            annotations:
+              summary: "LinkedIn service response time critically slow"
+              description: |
+                LinkedIn service 95th percentile response time is {{ $value }}s
+                This may impact automation timing and compliance.
+          
+          # Auto-scaling trigger alerts
+          - alert: ServiceNeedsScaling
+            expr: |
+              (
+                inergize:http_requests:rate5m > 100 and
+                inergize:cpu_utilization:avg5m > 0.70
+              ) or (
+                inergize:queue_depth:current > 500 and
+                rate(queue_jobs_processed_total[5m]) < inergize:queue_depth:current / 300
+              )
+            for: 2m
+            labels:
+              severity: info
+              team: sre
+              action: scale
+            annotations:
+              summary: "Service {{ $labels.service }} may need scaling"
+              description: |
+                Service {{ $labels.service }} shows signs of high load:
+                - Request rate: {{ $value }}
+                - CPU utilization high or queue backlog detected
+                Consider scaling up or investigating performance issues.
+
+---
+# Custom Performance Metrics Exporter
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: performance-metrics-exporter
+  namespace: inergize-production
+  labels:
+    app: performance-metrics-exporter
+    component: monitoring
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: performance-metrics-exporter
+  template:
+    metadata:
+      labels:
+        app: performance-metrics-exporter
+        component: monitoring
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: performance-exporter
+          image: ghcr.io/inergize/performance-exporter:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: metrics
+          env:
+            - name: REDIS_URL
+              value: "rediss://:$(REDIS_PASSWORD)@redis:6380"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: redis-password
+            - name: POSTGRES_URL
+              value: "postgresql://inergize_user:$(POSTGRES_PASSWORD)@postgresql:5432/inergize_production?sslmode=require"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: postgres-password
+            - name: TIMESCALE_URL
+              value: "postgresql://timescale_user:$(TIMESCALE_PASSWORD)@timescaledb:5432/inergize_analytics?sslmode=require"
+            - name: TIMESCALE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: timescale-password
+            - name: METRICS_INTERVAL
+              value: "15"
+            - name: LINKEDIN_METRICS_ENABLED
+              value: "true"
+            - name: COMPLIANCE_METRICS_ENABLED
+              value: "true"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
+
+---
+# Performance Monitoring Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: performance-metrics-exporter
+  namespace: inergize-production
+  labels:
+    app: performance-metrics-exporter
+    component: monitoring
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: metrics
+  selector:
+    app: performance-metrics-exporter

@@ -1,0 +1,672 @@
+# LinkedIn Compliance Monitoring and Alerting System
+# Ultra-conservative monitoring with real-time compliance scoring
+
+---
+# Prometheus Rules for LinkedIn Compliance
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: linkedin-compliance-rules
+  namespace: inergize-production
+  labels:
+    app: prometheus
+    component: compliance-monitoring
+    compliance: critical
+spec:
+  groups:
+    # Critical LinkedIn Compliance Alerts
+    - name: linkedin.compliance.critical
+      interval: 15s  # High-frequency monitoring
+      rules:
+        # Health Score Monitoring
+        - alert: LinkedInHealthScoreCritical
+          expr: linkedin_health_score < 40
+          for: 0s  # Immediate alert
+          labels:
+            severity: critical
+            service: linkedin-service
+            compliance: emergency
+            escalation: immediate
+          annotations:
+            summary: "LinkedIn compliance health score critically low"
+            description: |
+              LinkedIn service health score is {{ $value }}, below critical threshold of 40.
+              This indicates potential ToS violations that require immediate attention.
+              Current actions: All automation suspended automatically.
+              Required: Manual review and corrective action.
+            runbook_url: "https://docs.inergize.com/runbooks/linkedin-compliance-emergency"
+            compliance_action: "EMERGENCY_STOP_ACTIVATED"
+        
+        - alert: LinkedInHealthScoreHigh
+          expr: linkedin_health_score < 60
+          for: 30s
+          labels:
+            severity: high
+            service: linkedin-service
+            compliance: warning
+            escalation: urgent
+          annotations:
+            summary: "LinkedIn compliance health score degraded"
+            description: |
+              LinkedIn service health score is {{ $value }}, below warning threshold of 60.
+              Automation will be reduced to prevent further degradation.
+              Monitor closely for additional violations.
+            compliance_action: "REDUCED_AUTOMATION_MODE"
+        
+        # Rate Limit Violations
+        - alert: LinkedInRateLimitExceeded
+          expr: increase(linkedin_api_calls_total[1h]) > 25
+          for: 0s
+          labels:
+            severity: critical
+            service: linkedin-service
+            compliance: violation
+            escalation: immediate
+          annotations:
+            summary: "LinkedIn hourly rate limit exceeded"
+            description: |
+              LinkedIn API calls in the last hour: {{ $value }}
+              Maximum allowed: 25 calls/hour
+              This is a direct violation of our ultra-conservative limits.
+              All LinkedIn automation has been suspended.
+            compliance_action: "RATE_LIMIT_SUSPENSION_ACTIVATED"
+        
+        - alert: LinkedInDailyLimitApproaching
+          expr: increase(linkedin_api_calls_total[24h]) > 20
+          for: 0s
+          labels:
+            severity: high
+            service: linkedin-service
+            compliance: warning
+          annotations:
+            summary: "LinkedIn daily limit approaching"
+            description: |
+              LinkedIn API calls in the last 24 hours: {{ $value }}
+              Daily limit: 15 calls (warning at 20)
+              Automation will be suspended for the remainder of the day.
+            compliance_action: "DAILY_SUSPENSION_ACTIVATED"
+        
+        # Automation Pattern Alerts
+        - alert: LinkedInAutomationPatternViolation
+          expr: linkedin_automation_pattern_score < 70
+          for: 60s
+          labels:
+            severity: high
+            service: linkedin-service
+            compliance: pattern
+          annotations:
+            summary: "LinkedIn automation pattern appears non-human"
+            description: |
+              Automation pattern score: {{ $value }} (threshold: 70)
+              Pattern analysis indicates potential bot-like behavior.
+              Review recent automation actions and adjust timing patterns.
+            compliance_action: "PATTERN_REVIEW_REQUIRED"
+        
+        - alert: LinkedInDelayViolation
+          expr: avg_over_time(linkedin_action_delay_seconds[5m]) < 45
+          for: 30s
+          labels:
+            severity: high
+            service: linkedin-service
+            compliance: timing
+          annotations:
+            summary: "LinkedIn automation delays too short"
+            description: |
+              Average delay between actions: {{ $value }}s
+              Minimum required: 45s
+              Actions are occurring too frequently, risking detection.
+            compliance_action: "DELAY_ENFORCEMENT_ACTIVATED"
+        
+        # Error Rate Monitoring
+        - alert: LinkedInErrorRateHigh
+          expr: rate(linkedin_api_errors_total[5m]) > 0.03
+          for: 30s
+          labels:
+            severity: critical
+            service: linkedin-service
+            compliance: stability
+          annotations:
+            summary: "LinkedIn API error rate too high"
+            description: |
+              API error rate: {{ $value | humanizePercentage }}
+              Threshold: 3%
+              High error rates can trigger LinkedIn's anti-bot detection.
+              Investigate and resolve errors immediately.
+            compliance_action: "ERROR_INVESTIGATION_REQUIRED"
+        
+        # Account Status Monitoring
+        - alert: LinkedInAccountSuspended
+          expr: linkedin_account_status != 1
+          for: 0s
+          labels:
+            severity: critical
+            service: linkedin-service
+            compliance: emergency
+            escalation: immediate
+          annotations:
+            summary: "LinkedIn account suspended or restricted"
+            description: |
+              LinkedIn account status: {{ $value }}
+              Status codes: 1=Active, 2=Restricted, 3=Suspended, 4=Banned
+              IMMEDIATE ACTION: Stop all automation and investigate.
+            compliance_action: "COMPLETE_AUTOMATION_SHUTDOWN"
+        
+        # Connection Request Monitoring
+        - alert: LinkedInConnectionVelocityHigh
+          expr: increase(linkedin_connections_sent_total[24h]) > 15
+          for: 0s
+          labels:
+            severity: critical
+            service: linkedin-service
+            compliance: velocity
+          annotations:
+            summary: "Daily connection request limit exceeded"
+            description: |
+              Connection requests sent today: {{ $value }}
+              Ultra-conservative daily limit: 15
+              This exceeds our safety threshold and risks account restrictions.
+            compliance_action: "CONNECTION_AUTOMATION_SUSPENDED"
+        
+        - alert: LinkedInConnectionAcceptanceRateLow
+          expr: |
+            (
+              increase(linkedin_connections_accepted_total[7d]) / 
+              increase(linkedin_connections_sent_total[7d])
+            ) < 0.30
+          for: 5m
+          labels:
+            severity: high
+            service: linkedin-service
+            compliance: quality
+          annotations:
+            summary: "LinkedIn connection acceptance rate too low"
+            description: |
+              7-day connection acceptance rate: {{ $value | humanizePercentage }}
+              Minimum threshold: 30%
+              Low acceptance rates can trigger LinkedIn's spam detection.
+              Review targeting criteria and connection messages.
+            compliance_action: "CONNECTION_STRATEGY_REVIEW_REQUIRED"
+
+    # LinkedIn Service Performance and Stability
+    - name: linkedin.service.performance
+      interval: 30s
+      rules:
+        - alert: LinkedInServiceDown
+          expr: up{job="linkedin-service"} == 0
+          for: 30s
+          labels:
+            severity: critical
+            service: linkedin-service
+            compliance: availability
+          annotations:
+            summary: "LinkedIn service is down"
+            description: |
+              LinkedIn service has been unavailable for {{ $for }}.
+              This prevents compliance monitoring and automation control.
+              Immediate restoration required to maintain compliance oversight.
+            compliance_action: "SERVICE_RESTORATION_REQUIRED"
+        
+        - alert: LinkedInServiceHighLatency
+          expr: histogram_quantile(0.95, linkedin_request_duration_seconds_bucket) > 10
+          for: 2m
+          labels:
+            severity: warning
+            service: linkedin-service
+            compliance: performance
+          annotations:
+            summary: "LinkedIn service experiencing high latency"
+            description: |
+              95th percentile latency: {{ $value }}s
+              This may indicate issues that could affect automation timing
+              and compliance with delay requirements.
+        
+        # Queue Monitoring
+        - alert: LinkedInQueueBacklogHigh
+          expr: linkedin_queue_size > 100
+          for: 1m
+          labels:
+            severity: warning
+            service: linkedin-service
+            compliance: capacity
+          annotations:
+            summary: "LinkedIn automation queue backlog high"
+            description: |
+              Current queue size: {{ $value }} items
+              High backlogs can lead to rushed automation that violates timing requirements.
+              Consider scaling or adjusting automation rate.
+        
+        # Weekend/Off-hours Activity
+        - alert: LinkedInWeekendActivityDetected
+          expr: |
+            linkedin_api_calls_total and ON() 
+            (vector(time()) % 86400 > 72000 or vector(time()) % 86400 < 28800) and ON()
+            (vector(time()) % 604800 > 518400 or vector(time()) % 604800 < 86400)
+          for: 0s
+          labels:
+            severity: high
+            service: linkedin-service
+            compliance: timing
+          annotations:
+            summary: "LinkedIn automation active during restricted hours"
+            description: |
+              LinkedIn automation detected outside business hours or on weekends.
+              This violates our human-like activity patterns.
+              All off-hours automation should be suspended.
+            compliance_action: "OFF_HOURS_SUSPENSION_REQUIRED"
+
+    # Compliance Score Calculations
+    - name: linkedin.compliance.scoring
+      interval: 60s
+      rules:
+        # Overall Compliance Score (0-100)
+        - record: linkedin_compliance_score
+          expr: |
+            (
+              (linkedin_health_score * 0.4) +
+              (clamp_max(25 - increase(linkedin_api_calls_total[1h]), 25) / 25 * 100 * 0.3) +
+              (linkedin_automation_pattern_score * 0.2) +
+              (clamp_max(avg_over_time(linkedin_action_delay_seconds[1h]) / 45, 1) * 100 * 0.1)
+            )
+        
+        # API Usage Efficiency Score
+        - record: linkedin_api_efficiency_score
+          expr: |
+            clamp_max(
+              (1 - rate(linkedin_api_errors_total[5m])) * 100,
+              100
+            )
+        
+        # Human-like Behavior Score
+        - record: linkedin_human_behavior_score
+          expr: |
+            (
+              (linkedin_automation_pattern_score * 0.6) +
+              (clamp_max(avg_over_time(linkedin_action_delay_seconds[1h]) / 60, 1) * 100 * 0.4)
+            )
+        
+        # Safety Margin Score (how far we are from limits)
+        - record: linkedin_safety_margin_score
+          expr: |
+            (
+              (clamp_max(25 - increase(linkedin_api_calls_total[1h]), 25) / 25 * 100 * 0.4) +
+              (clamp_max(15 - increase(linkedin_connections_sent_total[24h]), 15) / 15 * 100 * 0.3) +
+              (clamp_max(8 - increase(linkedin_comments_sent_total[24h]), 8) / 8 * 100 * 0.3)
+            )
+
+---
+# AlertManager Configuration for LinkedIn Compliance
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-linkedin-compliance
+  namespace: inergize-production
+  labels:
+    app: alertmanager
+    component: linkedin-compliance
+data:
+  alertmanager.yml: |
+    global:
+      smtp_smarthost: 'smtp.gmail.com:587'
+      smtp_from: 'alerts@inergize.com'
+      smtp_auth_username: 'alerts@inergize.com'
+      smtp_auth_password: '${SMTP_PASSWORD}'
+      
+    route:
+      group_by: ['alertname', 'service', 'compliance']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'default'
+      routes:
+        # Critical LinkedIn compliance alerts - immediate notification
+        - match:
+            compliance: emergency
+          receiver: 'linkedin-emergency'
+          group_wait: 0s
+          group_interval: 0s
+          repeat_interval: 5m
+        
+        # High severity compliance alerts
+        - match:
+            compliance: violation
+          receiver: 'linkedin-critical'
+          group_wait: 5s
+          group_interval: 5s
+          repeat_interval: 15m
+        
+        # Warning level compliance alerts
+        - match:
+            compliance: warning
+          receiver: 'linkedin-warning'
+          group_wait: 30s
+          group_interval: 30s
+          repeat_interval: 1h
+        
+        # Pattern and timing alerts
+        - match:
+            compliance: pattern
+          receiver: 'linkedin-pattern'
+          group_wait: 60s
+          group_interval: 60s
+          repeat_interval: 2h
+    
+    inhibit_rules:
+      # Suppress warning alerts if emergency alert is active
+      - source_match:
+          compliance: emergency
+        target_match:
+          compliance: warning
+        equal: ['service']
+      
+      # Suppress pattern alerts if service is down
+      - source_match:
+          alertname: LinkedInServiceDown
+        target_match:
+          compliance: pattern
+        equal: ['service']
+    
+    receivers:
+      - name: 'default'
+        slack_configs:
+          - api_url: '${SLACK_WEBHOOK_URL}'
+            channel: '#inergize-alerts'
+            title: 'InErgize Alert'
+            text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+      
+      - name: 'linkedin-emergency'
+        slack_configs:
+          - api_url: '${SLACK_WEBHOOK_URL}'
+            channel: '#inergize-linkedin-emergency'
+            username: 'LinkedIn Compliance Bot'
+            icon_emoji: ':rotating_light:'
+            title: '🚨 EMERGENCY: LinkedIn Compliance Violation'
+            title_link: 'https://grafana.inergize.com/d/linkedin-compliance'
+            color: 'danger'
+            text: |
+              🚨 **IMMEDIATE ACTION REQUIRED** 🚨
+              
+              {{ range .Alerts }}
+              **Alert:** {{ .Annotations.summary }}
+              **Severity:** {{ .Labels.severity }}
+              **Action:** {{ .Annotations.compliance_action }}
+              
+              **Description:**
+              {{ .Annotations.description }}
+              
+              **Runbook:** {{ .Annotations.runbook_url }}
+              {{ end }}
+              
+              @channel @sre-team @compliance-team
+        
+        email_configs:
+          - to: 'sre-emergency@inergize.com,compliance-team@inergize.com,ceo@inergize.com'
+            subject: '🚨 CRITICAL: LinkedIn Compliance Emergency - Immediate Action Required'
+            html: |
+              <h2 style="color: red;">🚨 LinkedIn Compliance Emergency Alert</h2>
+              {{ range .Alerts }}
+              <h3>{{ .Annotations.summary }}</h3>
+              <p><strong>Severity:</strong> {{ .Labels.severity }}</p>
+              <p><strong>Compliance Action:</strong> {{ .Annotations.compliance_action }}</p>
+              <p><strong>Description:</strong></p>
+              <p>{{ .Annotations.description }}</p>
+              <p><strong>Runbook:</strong> <a href="{{ .Annotations.runbook_url }}">{{ .Annotations.runbook_url }}</a></p>
+              <hr>
+              {{ end }}
+              <p><strong>This alert requires immediate attention to prevent LinkedIn account suspension.</strong></p>
+        
+        webhook_configs:
+          - url: 'https://compliance.inergize.com/api/webhooks/linkedin-emergency'
+            http_config:
+              bearer_token: '${COMPLIANCE_WEBHOOK_TOKEN}'
+      
+      - name: 'linkedin-critical'
+        slack_configs:
+          - api_url: '${SLACK_WEBHOOK_URL}'
+            channel: '#inergize-linkedin-alerts'
+            username: 'LinkedIn Compliance Bot'
+            icon_emoji: ':warning:'
+            title: '⚠️ LinkedIn Compliance Violation'
+            color: 'warning'
+            text: |
+              ⚠️ **LinkedIn Compliance Issue Detected**
+              
+              {{ range .Alerts }}
+              **Alert:** {{ .Annotations.summary }}
+              **Action:** {{ .Annotations.compliance_action }}
+              {{ .Annotations.description }}
+              {{ end }}
+              
+              @sre-team @compliance-team
+        
+        email_configs:
+          - to: 'sre-team@inergize.com,compliance-team@inergize.com'
+            subject: 'LinkedIn Compliance Alert - {{ .GroupLabels.alertname }}'
+            body: |
+              LinkedIn Compliance Alert
+              
+              {{ range .Alerts }}
+              Alert: {{ .Annotations.summary }}
+              Description: {{ .Annotations.description }}
+              Action Taken: {{ .Annotations.compliance_action }}
+              {{ end }}
+      
+      - name: 'linkedin-warning'
+        slack_configs:
+          - api_url: '${SLACK_WEBHOOK_URL}'
+            channel: '#inergize-linkedin-monitoring'
+            username: 'LinkedIn Monitor'
+            icon_emoji: ':information_source:'
+            title: 'LinkedIn Compliance Warning'
+            color: 'good'
+            text: |
+              ℹ️ **LinkedIn Compliance Warning**
+              
+              {{ range .Alerts }}
+              **Alert:** {{ .Annotations.summary }}
+              {{ .Annotations.description }}
+              {{ end }}
+      
+      - name: 'linkedin-pattern'
+        slack_configs:
+          - api_url: '${SLACK_WEBHOOK_URL}'
+            channel: '#inergize-linkedin-patterns'
+            username: 'Pattern Monitor'
+            icon_emoji: ':chart_with_upwards_trend:'
+            title: 'LinkedIn Pattern Alert'
+            color: '#439FE0'
+            text: |
+              📊 **LinkedIn Automation Pattern Alert**
+              
+              {{ range .Alerts }}
+              **Alert:** {{ .Annotations.summary }}
+              {{ .Annotations.description }}
+              {{ end }}
+
+---
+# Grafana Dashboard ConfigMap for LinkedIn Compliance
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: linkedin-compliance-dashboard
+  namespace: inergize-production
+  labels:
+    app: grafana
+    component: linkedin-compliance
+    grafana_dashboard: "1"
+data:
+  linkedin-compliance.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "LinkedIn Compliance Monitor",
+        "tags": ["linkedin", "compliance", "automation"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "5s",
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "Compliance Health Score",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "linkedin_health_score",
+                "legendFormat": "Health Score"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "min": 0,
+                "max": 100,
+                "thresholds": {
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "yellow", "value": 60},
+                    {"color": "green", "value": 80}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "API Calls - Last 24h",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "increase(linkedin_api_calls_total[24h])",
+                "legendFormat": "API Calls"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "min": 0,
+                "max": 15,
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": 0},
+                    {"color": "yellow", "value": 12},
+                    {"color": "red", "value": 15}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Connection Requests - Today",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "increase(linkedin_connections_sent_total[24h])",
+                "legendFormat": "Connections"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "min": 0,
+                "max": 15,
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": 0},
+                    {"color": "yellow", "value": 12},
+                    {"color": "red", "value": 15}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+          },
+          {
+            "id": 4,
+            "title": "Account Status",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "linkedin_account_status",
+                "legendFormat": "Status"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "mappings": [
+                  {"options": {"1": {"text": "Active", "color": "green"}}},
+                  {"options": {"2": {"text": "Restricted", "color": "yellow"}}},
+                  {"options": {"3": {"text": "Suspended", "color": "red"}}},
+                  {"options": {"4": {"text": "Banned", "color": "red"}}}
+                ]
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+          },
+          {
+            "id": 5,
+            "title": "Compliance Score Trend",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "linkedin_compliance_score",
+                "legendFormat": "Overall Compliance"
+              },
+              {
+                "expr": "linkedin_safety_margin_score",
+                "legendFormat": "Safety Margin"
+              },
+              {
+                "expr": "linkedin_human_behavior_score",
+                "legendFormat": "Human Behavior"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "min": 0,
+                "max": 100
+              }
+            },
+            "gridPos": {"h": 9, "w": 24, "x": 0, "y": 8}
+          },
+          {
+            "id": 6,
+            "title": "API Activity Timeline",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "increase(linkedin_api_calls_total[5m])",
+                "legendFormat": "API Calls (5m)"
+              },
+              {
+                "expr": "increase(linkedin_connections_sent_total[5m])",
+                "legendFormat": "Connections (5m)"
+              },
+              {
+                "expr": "increase(linkedin_likes_sent_total[5m])",
+                "legendFormat": "Likes (5m)"
+              }
+            ],
+            "gridPos": {"h": 9, "w": 12, "x": 0, "y": 17}
+          },
+          {
+            "id": 7,
+            "title": "Error Rates & Response Times",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "rate(linkedin_api_errors_total[5m])",
+                "legendFormat": "Error Rate"
+              },
+              {
+                "expr": "histogram_quantile(0.95, linkedin_request_duration_seconds_bucket)",
+                "legendFormat": "95th Percentile Latency"
+              }
+            ],
+            "gridPos": {"h": 9, "w": 12, "x": 12, "y": 17}
+          }
+        ]
+      }
+    }
