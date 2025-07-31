@@ -34,7 +34,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
@@ -44,52 +43,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuCheckboxItem,
-  DropdownMenuLabel,
-} from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
-// Lazy load heavy chart libraries
-const ResponsiveContainer = lazy(() => 
-  import('recharts').then(module => ({ default: module.ResponsiveContainer }))
-);
-const LineChart = lazy(() => 
-  import('recharts').then(module => ({ default: module.LineChart }))
-);
-const Line = lazy(() => 
-  import('recharts').then(module => ({ default: module.Line }))
-);
-const XAxis = lazy(() => 
-  import('recharts').then(module => ({ default: module.XAxis }))
-);
-const YAxis = lazy(() => 
-  import('recharts').then(module => ({ default: module.YAxis }))
-);
-const CartesianGrid = lazy(() => 
-  import('recharts').then(module => ({ default: module.CartesianGrid }))
-);
-const Tooltip = lazy(() => 
-  import('recharts').then(module => ({ default: module.Tooltip }))
-);
-const Legend = lazy(() => 
-  import('recharts').then(module => ({ default: module.Legend }))
-);
-const ReferenceLine = lazy(() => 
-  import('recharts').then(module => ({ default: module.ReferenceLine }))
-);
-const Area = lazy(() => 
-  import('recharts').then(module => ({ default: module.Area }))
-);
-const AreaChart = lazy(() => 
-  import('recharts').then(module => ({ default: module.AreaChart }))
-);
+// Import recharts components directly to avoid type issues
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ReferenceLine,
+  Area,
+  AreaChart
+} from 'recharts';
 
 // Icons
 import { 
@@ -290,7 +260,7 @@ export function EnhancedAnalyticsChart({
   const chartRef = useRef<HTMLDivElement>(null);
   
   // Hooks
-  const { metrics, connected: wsConnected } = useRealTimeMetrics();
+  const { metrics, isConnected: wsConnected } = useRealTimeMetrics();
   const { reportError } = useErrorHandler();
 
   // ===== COMPUTED VALUES =====
@@ -323,7 +293,7 @@ export function EnhancedAnalyticsChart({
         const metricData = analytics.chartData[metric.key as keyof typeof analytics.chartData];
         if (Array.isArray(metricData)) {
           const point = metricData[index];
-          let value = point?.value || 0;
+          let value = (point as any)?.value || 0;
           
           // Add live data for the most recent point if available
           if (realTimeUpdates && 
@@ -648,7 +618,7 @@ export function EnhancedAnalyticsChart({
 
         <div className="flex items-center gap-2">
           {/* Time Range Selector */}
-          <Select value={timeRange} onValueChange={handleTimeRangeChange}>
+          <Select value={timeRange} onValueChange={(value) => handleTimeRangeChange(value as TimeRange)}>
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
@@ -661,77 +631,33 @@ export function EnhancedAnalyticsChart({
             </SelectContent>
           </Select>
 
-          {/* Controls Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>Chart Options</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              
-              <DropdownMenuCheckboxItem
-                checked={config.showPredictions}
-                onCheckedChange={(checked) => 
-                  handleConfigChange({ showPredictions: checked })
-                }
-                disabled={!visibleMetrics.some(m => m.prediction)}
-              >
-                <Brain className="h-4 w-4 mr-2" />
-                Show Predictions
-              </DropdownMenuCheckboxItem>
-              
-              <DropdownMenuCheckboxItem
-                checked={config.showGrid}
-                onCheckedChange={(checked) => 
-                  handleConfigChange({ showGrid: checked })
-                }
-              >
-                Grid Lines
-              </DropdownMenuCheckboxItem>
-              
-              <DropdownMenuCheckboxItem
-                checked={config.showLegend}
-                onCheckedChange={(checked) => 
-                  handleConfigChange({ showLegend: checked })
-                }
-              >
-                Legend
-              </DropdownMenuCheckboxItem>
-              
-              <DropdownMenuCheckboxItem
-                checked={config.animation}
-                onCheckedChange={(checked) => 
-                  handleConfigChange({ animation: checked })
-                }
-              >
-                Animations
-              </DropdownMenuCheckboxItem>
-              
-              <DropdownMenuSeparator />
-              
-              <DropdownMenuItem onClick={handleExport}>
-                <Download className="h-4 w-4 mr-2" />
-                Export Data
-              </DropdownMenuItem>
-              
-              <DropdownMenuItem onClick={toggleFullscreen}>
-                {isFullscreen ? (
-                  <>
-                    <Minimize2 className="h-4 w-4 mr-2" />
-                    Exit Fullscreen
-                  </>
-                ) : (
-                  <>
-                    <Maximize2 className="h-4 w-4 mr-2" />
-                    Fullscreen
-                  </>
-                )}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Controls Buttons */}
+          <div className="flex items-center space-x-2">
+            <Button
+              variant={config.showPredictions ? "default" : "outline"}
+              size="sm"
+              onClick={() => handleConfigChange({ showPredictions: !config.showPredictions })}
+              disabled={!visibleMetrics.some(m => m.prediction)}
+            >
+              <Brain className="h-4 w-4" />
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleFullscreen}
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -800,9 +726,8 @@ export function EnhancedAnalyticsChart({
     }
 
     return (
-      <Suspense fallback={<ChartSkeleton height={height} />}>
-        <div style={{ height }}>
-          <ResponsiveContainer width="100%" height="100%">
+      <div style={{ height }}>
+        <ResponsiveContainer width="100%" height="100%">
             {config.type === 'area' ? (
               <AreaChart data={chartData}>
                 {config.showGrid && <CartesianGrid strokeDasharray="3 3" opacity={0.3} />}
@@ -932,7 +857,6 @@ export function EnhancedAnalyticsChart({
             )}
           </ResponsiveContainer>
         </div>
-      </Suspense>
     );
   };
 
@@ -1045,13 +969,13 @@ export function EnhancedAnalyticsChart({
         
         <CardContent className="pt-0">
           {showAdvancedControls ? (
-            <Tabs value={currentTab} onValueChange={setCurrentTab}>
+            <Tabs value={currentTab} onValueChange={(value) => setCurrentTab(value as 'chart' | 'predictions' | 'insights')}>
               <TabsList className="grid w-full grid-cols-3 mb-4">
                 <TabsTrigger value="chart">
                   <LineChartIcon className="h-4 w-4 mr-2" />
                   Chart
                 </TabsTrigger>
-                <TabsTrigger value="predictions" disabled={!config.showPredictions}>
+                <TabsTrigger value="predictions">
                   <Brain className="h-4 w-4 mr-2" />
                   Predictions
                 </TabsTrigger>

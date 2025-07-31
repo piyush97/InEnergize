@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,9 +19,6 @@ import {
   Eye,
   UserPlus,
   Plus,
-  Clock,
-  CheckCircle,
-  XCircle,
   AlertTriangle,
   TrendingUp,
   Filter,
@@ -33,8 +31,7 @@ import {
 import {
   EngagementAutomationProps,
   EngagementTask,
-  ScheduleEngagementRequest,
-  MessageTemplate
+  ScheduleEngagementRequest
 } from "@/types/automation";
 
 interface LinkedInPost {
@@ -413,7 +410,7 @@ export function EngagementAutomation({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="type">Engagement Type</Label>
-                    <Select value={engagementType} onValueChange={(value: "like" | "comment" | "view_profile" | "follow") => setEngagementType(value)}>
+                    <Select value={engagementType} onValueChange={(value) => setEngagementType(value as "like" | "comment" | "view_profile" | "follow")}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -448,7 +445,7 @@ export function EngagementAutomation({
 
                   <div className="space-y-2">
                     <Label htmlFor="priority">Priority</Label>
-                    <Select value={priority} onValueChange={(value: "low" | "medium" | "high") => setPriority(value)}>
+                    <Select value={priority} onValueChange={(value) => setPriority(value as "low" | "medium" | "high")}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -556,9 +553,11 @@ export function EngagementAutomation({
                   <div key={post.id} className="border rounded-lg p-4 space-y-3">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center space-x-3">
-                        <img 
+                        <Image 
                           src="/api/placeholder/40/40" 
                           alt={post.authorName}
+                          width={40}
+                          height={40}
                           className="w-10 h-10 rounded-full"
                         />
                         <div>
@@ -627,9 +626,11 @@ export function EngagementAutomation({
                 {suggestedProfiles.map(profile => (
                   <div key={profile.id} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="flex items-center space-x-4">
-                      <img 
+                      <Image 
                         src="/api/placeholder/48/48" 
                         alt={profile.name}
+                        width={48}
+                        height={48}
                         className="w-12 h-12 rounded-full"
                       />
                       <div>

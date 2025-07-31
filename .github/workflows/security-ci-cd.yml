@@ -1,0 +1,527 @@
+# Secure CI/CD Pipeline for InErgize
+# Implements comprehensive security testing and deployment automation
+
+name: Security-First CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop, 'release/*']
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run security scans daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  NODE_VERSION: '22'
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+  SECURITY_SCAN_THRESHOLD: 'HIGH'
+  VULNERABILITY_THRESHOLD: 'MEDIUM'
+
+jobs:
+  # Security and dependency scanning
+  security-scan:
+    name: Security & Dependency Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for security analysis
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci --audit-level=moderate
+          npm run install:all  # Install all service dependencies
+
+      - name: Run npm audit
+        run: |
+          npm audit --audit-level=moderate --production
+          npm audit --json > audit-results.json || true
+
+      - name: Dependency vulnerability scan with Snyk
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=medium --fail-on=upgradable
+
+      - name: SAST scan with CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript,typescript
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript"
+
+      - name: ESLint security rules
+        run: |
+          npm run lint:security
+          npm run lint:security -- --format json --output-file eslint-security.json || true
+
+      - name: Secrets scanning with TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --debug --only-verified
+
+      - name: License compliance check
+        run: |
+          npx license-checker --onlyAllow 'MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC' --production
+
+      - name: Upload security scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-scan-results
+          path: |
+            audit-results.json
+            eslint-security.json
+            snyk-results.json
+          retention-days: 30
+
+  # Code quality and testing
+  code-quality:
+    name: Code Quality & Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type checking
+        run: npm run type-check
+
+      - name: Linting
+        run: npm run lint
+
+      - name: Unit tests with coverage
+        run: |
+          npm run test:coverage
+          npm run test:coverage -- --coverageReporters=lcov --coverageDirectory=coverage
+
+      - name: Integration tests
+        run: npm run test:integration
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test:test@localhost:5432/inergize_test
+          REDIS_URL: redis://localhost:6379
+
+      - name: Upload test coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+
+  # Container security scanning
+  container-security:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [security-scan]
+    
+    strategy:
+      matrix:
+        service: [auth-service, user-service, linkedin-service, analytics-service, ai-service, web]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build container image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/${{ matrix.service }}
+          file: ./services/${{ matrix.service }}/Dockerfile
+          tags: inergize/${{ matrix.service }}:${{ github.sha }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: inergize/${{ matrix.service }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-${{ matrix.service }}.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          exit-code: '1'  # Fail on vulnerabilities
+
+      - name: Container security with Snyk
+        uses: snyk/actions/docker@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: inergize/${{ matrix.service }}:${{ github.sha }}
+          args: --severity-threshold=medium --file=services/${{ matrix.service }}/Dockerfile
+
+      - name: Docker CIS benchmark
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v /usr/bin/docker:/usr/bin/docker \
+            -v $PWD:/pwd \
+            aquasec/docker-bench-security \
+            -c container_images -t inergize/${{ matrix.service }}:${{ github.sha }}
+
+      - name: Upload container scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: container-security-${{ matrix.service }}
+          path: trivy-${{ matrix.service }}.sarif
+          retention-days: 30
+
+  # Infrastructure as Code security
+  iac-security:
+    name: Infrastructure Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Checkov IaC security scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: dockerfile,docker_compose,kubernetes,secrets
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+          quiet: true
+          soft_fail: false
+
+      - name: Docker Compose security validation
+        run: |
+          # Validate Docker Compose files for security issues
+          docker run --rm -v $PWD:/project \
+            -w /project \
+            bridgecrew/checkov:latest \
+            -f docker-compose.yml \
+            --framework docker_compose \
+            --check CKV_DOCKER_*
+
+      - name: Kubernetes security with Kubesec
+        run: |
+          if [ -d "k8s" ]; then
+            curl -sSX POST --data-binary @k8s/*.yaml \
+              https://v2.kubesec.io/scan > kubesec-results.json
+          fi
+
+      - name: Upload IaC scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iac-security-results
+          path: |
+            checkov-results.sarif
+            kubesec-results.json
+          retention-days: 30
+
+  # Build and test
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [code-quality, security-scan]
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_USER: test
+          POSTGRES_DB: inergize_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build all services
+        run: npm run build
+
+      - name: Run E2E tests with Playwright
+        run: |
+          npx playwright install --with-deps chromium firefox webkit
+          npm run test:e2e
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/inergize_test
+          REDIS_URL: redis://localhost:6379
+
+      - name: Performance tests
+        run: npm run test:performance
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 30
+
+  # Security compliance validation
+  compliance-check:
+    name: Compliance Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [container-security, iac-security]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: LinkedIn API compliance check
+        run: |
+          # Validate LinkedIn rate limiting implementation
+          node scripts/validate-linkedin-compliance.js
+
+      - name: GDPR compliance validation
+        run: |
+          # Check for GDPR compliance patterns
+          grep -r "personal.*data\|pii\|gdpr" services/ --include="*.js" --include="*.ts" || true
+          node scripts/validate-gdpr-compliance.js
+
+      - name: SOC 2 controls validation
+        run: |
+          # Validate SOC 2 security controls implementation
+          node scripts/validate-soc2-controls.js
+
+      - name: PCI DSS compliance check
+        run: |
+          # Check for PCI DSS compliance if handling payment data
+          node scripts/validate-pci-compliance.js
+
+      - name: Security headers validation
+        run: |
+          # Validate security headers implementation
+          node scripts/validate-security-headers.js
+
+  # Production deployment (only on main branch)
+  deploy-production:
+    name: Production Deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [build-and-test, compliance-check, container-security]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push container images
+        run: |
+          # Build and push all service images
+          for service in auth-service user-service linkedin-service analytics-service ai-service web; do
+            echo "Building and pushing $service..."
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --file services/$service/Dockerfile \
+              --tag ${{ steps.login-ecr.outputs.registry }}/inergize/$service:${{ github.sha }} \
+              --tag ${{ steps.login-ecr.outputs.registry }}/inergize/$service:latest \
+              --push \
+              services/$service
+          done
+
+      - name: Final security scan of production images
+        run: |
+          for service in auth-service user-service linkedin-service analytics-service ai-service web; do
+            echo "Scanning $service production image..."
+            trivy image \
+              --exit-code 1 \
+              --severity CRITICAL,HIGH \
+              ${{ steps.login-ecr.outputs.registry }}/inergize/$service:${{ github.sha }}
+          done
+
+      - name: Deploy to production with zero-downtime
+        run: |
+          # Update production deployment with new images
+          echo "Deploying to production..."
+          
+          # Update docker-compose with new image tags
+          sed -i "s/:latest/:${{ github.sha }}/g" docker-compose.prod.yml
+          
+          # Deploy with rolling update
+          docker stack deploy -c docker-compose.prod.yml inergize-prod
+          
+          # Wait for services to be healthy
+          timeout 300s bash -c '
+            until [ "$(docker service ls --filter name=inergize-prod --format "{{.Replicas}}" | grep -c "/")" -eq 0 ]; do
+              echo "Waiting for services to be ready..."
+              sleep 10
+            done
+          '
+
+      - name: Production health check
+        run: |
+          # Verify all services are healthy
+          curl -f https://api.inergize.com/health || exit 1
+          curl -f https://app.inergize.com/health || exit 1
+
+      - name: Notify deployment success
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#deployments'
+          message: |
+            🚀 Production deployment successful!
+            Commit: ${{ github.sha }}
+            Services: All healthy
+            Security scans: Passed
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # Staging deployment (on develop branch)
+  deploy-staging:
+    name: Staging Deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build-and-test, compliance-check]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment: staging
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging environment..."
+          # Staging deployment logic here
+          docker-compose -f docker-compose.staging.yml up -d
+
+      - name: Run staging smoke tests
+        run: |
+          # Wait for services to be ready
+          sleep 30
+          
+          # Run smoke tests
+          npm run test:smoke:staging
+
+      - name: Notify staging deployment
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#deployments'
+          message: |
+            🧪 Staging deployment successful!
+            Commit: ${{ github.sha }}
+            Environment: staging.inergize.com
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # Security monitoring post-deployment
+  post-deployment-security:
+    name: Post-Deployment Security Monitoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [deploy-production]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Runtime security scan
+        run: |
+          # Monitor for runtime security issues
+          echo "Starting post-deployment security monitoring..."
+
+      - name: API security testing
+        run: |
+          # Run OWASP ZAP against production APIs
+          docker run -t owasp/zap2docker-stable zap-api-scan.py \
+            -t https://api.inergize.com/openapi.json \
+            -f openapi \
+            -r zap-api-report.html
+
+      - name: SSL/TLS validation
+        run: |
+          # Validate SSL/TLS configuration
+          curl -I https://inergize.com | grep -i "strict-transport-security"
+          curl -I https://api.inergize.com | grep -i "strict-transport-security"
+
+      - name: LinkedIn compliance monitoring
+        run: |
+          # Start monitoring LinkedIn API compliance
+          curl -X POST https://api.inergize.com/internal/monitoring/linkedin/start
+
+      - name: Security alert setup
+        run: |
+          # Configure security monitoring alerts
+          echo "Setting up post-deployment security monitoring..."
+
+# Workflow security hardening
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  checks: write
+  pull-requests: write

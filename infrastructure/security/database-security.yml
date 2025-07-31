@@ -1,0 +1,452 @@
+# Database Security Configuration for InErgize
+# Implements encryption at rest, TLS, access controls, and audit logging
+
+# PostgreSQL Security Configuration
+postgresql:
+  connection_security:
+    # Force SSL/TLS connections
+    ssl_mode: require
+    ssl_cert_file: /etc/ssl/certs/postgresql.crt
+    ssl_key_file: /etc/ssl/private/postgresql.key
+    ssl_ca_file: /etc/ssl/certs/ca-certificates.crt
+    
+    # Connection limits and timeouts
+    max_connections: 200
+    idle_in_transaction_session_timeout: 300000  # 5 minutes
+    statement_timeout: 30000  # 30 seconds
+    lock_timeout: 10000      # 10 seconds
+    
+  authentication:
+    # Use SCRAM-SHA-256 for password authentication
+    password_encryption: scram-sha-256
+    
+    # Host-based authentication rules
+    pg_hba_conf: |
+      # TYPE  DATABASE        USER            ADDRESS                 METHOD
+      local   all             postgres                                peer
+      local   all             all                                     scram-sha-256
+      host    all             all             127.0.0.1/32           scram-sha-256
+      host    all             all             ::1/128                scram-sha-256
+      hostssl all             all             0.0.0.0/0              scram-sha-256
+      hostnossl all           all             0.0.0.0/0              reject
+    
+    # Password policy
+    password_policy:
+      min_length: 16
+      require_uppercase: true
+      require_lowercase: true
+      require_numbers: true
+      require_special_chars: true
+      max_age_days: 90
+      history_count: 12
+  
+  encryption:
+    # Transparent Data Encryption (TDE) settings
+    data_encryption:
+      enabled: true
+      algorithm: AES-256
+      key_management: external  # Use external key management service
+      key_rotation_days: 90
+    
+    # WAL encryption
+    wal_encryption: true
+    
+    # Backup encryption
+    backup_encryption:
+      enabled: true
+      compression: true
+      cipher: AES-256-GCM
+  
+  audit_logging:
+    enabled: true
+    log_connections: true
+    log_disconnections: true
+    log_checkpoints: true
+    log_lock_waits: true
+    log_temp_files: 10240  # Log temp files > 10MB
+    log_autovacuum_min_duration: 1000  # Log autovacuum > 1s
+    
+    # Audit specific operations
+    log_statement: all  # Log all statements (use 'ddl' in production for performance)
+    log_min_duration_statement: 1000  # Log queries > 1s
+    
+    # Security-related logging
+    log_hostname: true
+    log_line_prefix: '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+    
+  access_control:
+    # Row Level Security
+    row_level_security:
+      enabled: true
+      default_policy: restrictive
+    
+    # Database roles and permissions
+    roles:
+      - name: inergize_admin
+        login: false
+        createdb: false
+        createrole: false
+        superuser: false
+        inherit: true
+        
+      - name: inergize_app
+        login: true
+        createdb: false
+        createrole: false
+        superuser: false
+        inherit: true
+        connection_limit: 50
+        
+      - name: inergize_readonly
+        login: true
+        createdb: false
+        createrole: false
+        superuser: false
+        inherit: true
+        connection_limit: 20
+        
+      - name: inergize_analytics
+        login: true
+        createdb: false
+        createrole: false
+        superuser: false
+        inherit: true
+        connection_limit: 30
+    
+    # Schema-level permissions
+    schema_permissions:
+      public:
+        inergize_app: [SELECT, INSERT, UPDATE, DELETE]
+        inergize_readonly: [SELECT]
+        inergize_analytics: [SELECT]
+      
+      auth:
+        inergize_app: [SELECT, INSERT, UPDATE, DELETE]
+        inergize_readonly: [SELECT]
+      
+      linkedin:
+        inergize_app: [SELECT, INSERT, UPDATE, DELETE]
+        inergize_readonly: [SELECT]
+        inergize_analytics: [SELECT]
+      
+      analytics:
+        inergize_analytics: [SELECT, INSERT, UPDATE, DELETE]
+        inergize_readonly: [SELECT]
+  
+  data_masking:
+    # Mask sensitive data in non-production environments
+    enabled: true
+    rules:
+      - table: users
+        column: email
+        mask_type: email_domain
+        replacement: "@masked.inergize.local"
+      
+      - table: users
+        column: phone
+        mask_type: partial
+        visible_chars: 4
+        mask_char: "X"
+      
+      - table: linkedin_profiles
+        column: profile_url
+        mask_type: hash
+        algorithm: sha256
+      
+      - table: linkedin_tokens
+        column: access_token
+        mask_type: encrypt
+        key_ref: data_masking_key
+
+# TimescaleDB Security Configuration
+timescaledb:
+  inherits_from: postgresql
+  
+  specific_settings:
+    # Chunk-level security
+    chunk_time_interval: "1 day"
+    compress_after: "7 days"
+    drop_after: "90 days"
+    
+    # Compression with encryption
+    compression:
+      enabled: true
+      algorithm: "LZ4"
+      encryption: true
+    
+    # Continuous aggregates security
+    continuous_aggregates:
+      refresh_policy: "1 hour"
+      max_interval_per_job: "24 hours"
+      
+    # Real-time aggregation limits
+    real_time_aggregation:
+      max_concurrent_queries: 10
+      query_timeout: 30000
+
+# Redis Security Configuration
+redis:
+  authentication:
+    # Require password authentication
+    requirepass: true
+    password_file: /run/secrets/redis_password
+    
+    # ACL (Access Control Lists) for Redis 6+
+    acl_enabled: true
+    acl_rules:
+      - user: default
+        enabled: false
+        
+      - user: inergize_app
+        enabled: true
+        password_hash: sha256
+        commands: ["+@read", "+@write", "+@list", "+@hash", "+@set", "+@stream", "-flushall", "-flushdb", "-shutdown", "-debug"]
+        keys: ["inergize:*", "session:*", "cache:*"]
+        
+      - user: inergize_session
+        enabled: true
+        password_hash: sha256
+        commands: ["+@read", "+@write", "+expire", "+ttl", "-flushall", "-flushdb"]
+        keys: ["session:*", "auth:*"]
+        
+      - user: inergize_cache
+        enabled: true
+        password_hash: sha256
+        commands: ["+@read", "+@write", "+expire", "+ttl"]
+        keys: ["cache:*", "temp:*"]
+        
+      - user: inergize_analytics
+        enabled: true
+        password_hash: sha256
+        commands: ["+@read", "+@write", "+@stream", "+@list"]
+        keys: ["analytics:*", "metrics:*", "stream:*"]
+  
+  network_security:
+    # Bind to specific interfaces
+    bind: "127.0.0.1"
+    protected_mode: true
+    port: 6379
+    
+    # TLS configuration
+    tls:
+      enabled: true
+      port: 6380
+      cert_file: /etc/ssl/certs/redis.crt
+      key_file: /etc/ssl/private/redis.key
+      ca_cert_file: /etc/ssl/certs/ca-certificates.crt
+      protocols: "TLSv1.2 TLSv1.3"
+      ciphers: "ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:DHE+CHACHA20:!aNULL:!MD5:!DSS"
+  
+  encryption:
+    # Encryption at rest (Redis Enterprise feature)
+    data_encryption:
+      enabled: true
+      algorithm: AES-256-GCM
+      key_rotation: 90  # days
+    
+    # In-memory encryption
+    memory_encryption: true
+  
+  resource_limits:
+    # Memory and connection limits
+    maxmemory: 2gb
+    maxmemory_policy: allkeys-lru
+    maxclients: 1000
+    timeout: 300
+    tcp_keepalive: 60
+    
+    # Command execution limits
+    slowlog_log_slower_than: 10000  # 10ms
+    slowlog_max_len: 1000
+  
+  audit_logging:
+    # Command logging
+    logfile: /var/log/redis/redis.log
+    loglevel: notice
+    syslog_enabled: true
+    syslog_ident: redis
+    syslog_facility: local0
+
+# Elasticsearch Security Configuration
+elasticsearch:
+  security:
+    enabled: true
+    
+    # Authentication
+    authentication:
+      native:
+        enabled: true
+      ldap:
+        enabled: false
+      saml:
+        enabled: false
+    
+    # Authorization
+    authorization:
+      enabled: true
+      roles:
+        - name: inergize_admin
+          cluster: [all]
+          indices:
+            - names: ["*"]
+              privileges: [all]
+        
+        - name: inergize_app
+          cluster: [monitor]
+          indices:
+            - names: ["inergize-*", "logs-*"]
+              privileges: [read, write, create_index, delete_index, manage]
+        
+        - name: inergize_readonly
+          cluster: [monitor]
+          indices:
+            - names: ["inergize-*", "logs-*"]
+              privileges: [read]
+    
+    # TLS/SSL
+    transport:
+      ssl:
+        enabled: true
+        verification_mode: certificate
+        keystore:
+          path: /etc/elasticsearch/elastic-certificates.p12
+        truststore:
+          path: /etc/elasticsearch/elastic-certificates.p12
+    
+    http:
+      ssl:
+        enabled: true
+        keystore:
+          path: /etc/elasticsearch/elastic-certificates.p12
+        truststore:
+          path: /etc/elasticsearch/elastic-certificates.p12
+  
+  encryption:
+    # Index-level encryption
+    indices:
+      encryption:
+        enabled: true
+        algorithm: AES-256-GCM
+    
+    # Node-to-node encryption
+    transport_encryption: true
+  
+  audit:
+    enabled: true
+    include:
+      request_body: true
+      request_headers: ["X-Forwarded-For", "User-Agent", "Authorization"]
+    exclude:
+      users: ["_system", "elastic"]
+      actions: ["indices:data/read/search"]
+    
+    outputs:
+      - type: index
+        index:
+          prefix: audit-
+          rollover: daily
+      - type: logfile
+        path: /var/log/elasticsearch/audit.log
+
+# Database Connection Pooling Security
+connection_pooling:
+  pgbouncer:
+    # Connection security
+    auth_type: scram-sha-256
+    auth_file: /etc/pgbouncer/userlist.txt
+    pool_mode: transaction
+    max_client_conn: 200
+    default_pool_size: 50
+    
+    # Security settings
+    ignore_startup_parameters: extra_float_digits,geqo
+    admin_users: inergize_admin
+    stats_users: inergize_readonly
+    
+    # TLS configuration
+    client_tls_sslmode: require
+    client_tls_protocols: secure
+    client_tls_ciphers: HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA
+    
+    server_tls_sslmode: require
+    server_tls_protocols: secure
+
+# Backup Security
+backup:
+  encryption:
+    enabled: true
+    algorithm: AES-256-GCM
+    key_derivation: PBKDF2
+    iterations: 100000
+  
+  access_control:
+    backup_user: inergize_backup
+    restore_user: inergize_restore
+    
+  retention:
+    daily: 30
+    weekly: 12
+    monthly: 12
+    yearly: 7
+  
+  verification:
+    integrity_check: true
+    test_restore: weekly
+
+# Database Monitoring and Alerting
+monitoring:
+  metrics:
+    - connection_count
+    - query_duration
+    - lock_waits
+    - disk_usage
+    - memory_usage
+    - ssl_connections
+    - authentication_failures
+    - privilege_escalations
+  
+  alerts:
+    - name: high_connection_count
+      threshold: 180
+      severity: warning
+    
+    - name: long_running_queries
+      threshold: 30000  # 30 seconds
+      severity: warning
+    
+    - name: authentication_failures
+      threshold: 10
+      window: 300  # 5 minutes
+      severity: critical
+    
+    - name: ssl_connection_failures
+      threshold: 5
+      window: 300
+      severity: critical
+    
+    - name: disk_usage_high
+      threshold: 80  # percent
+      severity: warning
+    
+    - name: memory_usage_high
+      threshold: 90  # percent
+      severity: critical
+
+# Compliance Settings
+compliance:
+  gdpr:
+    data_retention_days: 730  # 2 years
+    anonymization_after_days: 365
+    audit_log_retention_days: 2555  # 7 years
+    
+  soc2:
+    access_logging: true
+    change_logging: true
+    encryption_required: true
+    backup_encryption: true
+    
+  pci_dss:
+    applicable: false  # Set to true if processing payments
+    data_encryption: true
+    access_logging: true
+    vulnerability_scanning: quarterly

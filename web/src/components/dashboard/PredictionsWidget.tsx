@@ -277,7 +277,7 @@ const PredictionsWidget: React.FC<PredictionsWidgetProps> = ({ className }) => {
       </CardHeader>
       
       <CardContent>
-        <Tabs defaultValue="predictions" className="w-full">
+        <Tabs value="predictions" className="w-full">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="predictions">Growth</TabsTrigger>
             <TabsTrigger value="recommendations">Tips</TabsTrigger>

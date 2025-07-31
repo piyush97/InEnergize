@@ -1,0 +1,377 @@
+# InErgize Kong Enterprise Security Configuration
+# Implements enterprise-grade security with LinkedIn compliance focus
+_format_version: "3.0"
+
+# Certificate management for TLS
+certificates:
+  - cert: |
+      -----BEGIN CERTIFICATE-----
+      # Placeholder for production TLS certificate
+      # Replace with actual Let's Encrypt or corporate certificate
+      -----END CERTIFICATE-----
+    key: |
+      -----BEGIN PRIVATE KEY-----
+      # Placeholder for production TLS private key
+      # Replace with actual private key
+      -----END PRIVATE KEY-----
+    tags:
+      - production
+      - api-gateway
+
+# Enhanced services with circuit breaker and health checks
+services:
+  - name: auth-service
+    url: http://inergize-auth-service:3001
+    connect_timeout: 5000
+    write_timeout: 10000
+    read_timeout: 10000
+    retries: 3
+    tags:
+      - critical
+      - authentication
+
+  - name: user-service
+    url: http://inergize-user-service:3002
+    connect_timeout: 5000
+    write_timeout: 10000
+    read_timeout: 10000
+    retries: 3
+    tags:
+      - core
+      - user-management
+
+  - name: linkedin-service
+    url: http://inergize-linkedin-service:3003
+    connect_timeout: 10000
+    write_timeout: 30000
+    read_timeout: 30000
+    retries: 2
+    tags:
+      - critical
+      - linkedin-integration
+      - compliance-sensitive
+
+  - name: analytics-service
+    url: http://inergize-analytics-service:3004
+    connect_timeout: 5000
+    write_timeout: 15000
+    read_timeout: 15000
+    retries: 3
+    tags:
+      - analytics
+      - timeseries
+
+  - name: ai-service
+    url: http://inergize-ai-service:3005
+    connect_timeout: 15000
+    write_timeout: 60000
+    read_timeout: 60000
+    retries: 1
+    tags:
+      - ai
+      - resource-intensive
+
+# Secure routing with advanced options
+routes:
+  # Auth Service Routes - Highest Security
+  - name: auth-login
+    service: auth-service
+    paths: ["/api/v1/auth/login"]
+    methods: ["POST"]
+    strip_path: true
+    preserve_host: false
+    tags: ["authentication", "login"]
+
+  - name: auth-register
+    service: auth-service
+    paths: ["/api/v1/auth/register"]
+    methods: ["POST"]
+    strip_path: true
+    preserve_host: false
+    tags: ["authentication", "registration"]
+
+  - name: auth-refresh
+    service: auth-service
+    paths: ["/api/v1/auth/refresh"]
+    methods: ["POST"]
+    strip_path: true
+    preserve_host: false
+    tags: ["authentication", "token-refresh"]
+
+  # User Service Routes
+  - name: user-profile
+    service: user-service
+    paths: ["/api/v1/users"]
+    methods: ["GET", "PUT", "PATCH"]
+    strip_path: true
+    preserve_host: false
+    tags: ["user-management"]
+
+  # LinkedIn Service Routes - Compliance Critical
+  - name: linkedin-oauth
+    service: linkedin-service
+    paths: ["/api/v1/linkedin/oauth"]
+    methods: ["GET", "POST"]
+    strip_path: true
+    preserve_host: false
+    tags: ["linkedin", "oauth"]
+
+  - name: linkedin-automation
+    service: linkedin-service
+    paths: ["/api/v1/linkedin/automation"]
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    strip_path: true
+    preserve_host: false
+    tags: ["linkedin", "automation", "rate-limited"]
+
+  # Analytics Routes
+  - name: analytics-metrics
+    service: analytics-service
+    paths: ["/api/v1/analytics"]
+    methods: ["GET", "POST"]
+    strip_path: true
+    preserve_host: false
+    tags: ["analytics"]
+
+  # AI Service Routes
+  - name: ai-content
+    service: ai-service
+    paths: ["/api/v1/ai"]
+    methods: ["POST"]
+    strip_path: true
+    preserve_host: false
+    tags: ["ai", "content-generation"]
+
+# Comprehensive plugin configuration
+plugins:
+  # 1. CORS with strict security
+  - name: cors
+    config:
+      origins:
+        - "https://app.inergize.com"
+        - "https://inergize.com"
+        - "http://localhost:3000"  # Development only
+      methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+      headers:
+        - "Accept"
+        - "Accept-Version"
+        - "Content-Length"
+        - "Content-Type"
+        - "Date"
+        - "Authorization"
+        - "X-Auth-Token"
+        - "X-Request-ID"
+      exposed_headers:
+        - "X-Auth-Token"
+        - "X-RateLimit-Remaining"
+        - "X-RateLimit-Reset"
+        - "X-Request-ID"
+      credentials: true
+      max_age: 3600
+      preflight_continue: false
+
+  # 2. Security Headers
+  - name: response-ratelimiting
+    config:
+      limits:
+        video: 
+          minute: 10
+        image:
+          minute: 100
+
+  # 3. Request/Response Transformation for Security
+  - name: request-transformer
+    config:
+      remove:
+        headers: ["X-Forwarded-*", "X-Real-IP"]
+      add:
+        headers:
+          - "X-Request-ID:$(request_id)"
+          - "X-Forwarded-Proto:https"
+
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "X-Content-Type-Options:nosniff"
+          - "X-Frame-Options:DENY"
+          - "X-XSS-Protection:1; mode=block"
+          - "Strict-Transport-Security:max-age=31536000; includeSubDomains; preload"
+          - "Content-Security-Policy:default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' wss: https:; frame-src 'none'; object-src 'none'"
+          - "Referrer-Policy:strict-origin-when-cross-origin"
+          - "Permissions-Policy:camera=(), microphone=(), geolocation=()"
+      remove:
+        headers: ["Server", "X-Powered-By"]
+
+  # 4. Global Rate Limiting with LinkedIn Compliance
+  - name: rate-limiting
+    config:
+      minute: 60
+      hour: 1000
+      day: 10000
+      policy: redis
+      redis_host: inergize-redis
+      redis_port: 6379
+      redis_password: ${REDIS_PASSWORD}
+      redis_database: 2
+      hide_client_headers: false
+      fault_tolerant: true
+
+  # 5. Request Size Limiting
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 5  # 5MB max
+
+  # 6. IP Restriction (Production)
+  - name: ip-restriction
+    enabled: false  # Enable in production
+    config:
+      deny: []
+      allow: []
+
+  # 7. Bot Detection
+  - name: bot-detection
+    enabled: true
+    config:
+      deny: ["curl", "wget", "python-requests"]
+
+  # 8. Request Logging for Security Audit
+  - name: file-log
+    config:
+      path: "/var/log/kong/access.log"
+      custom_fields_by_lua:
+        request_id: "return kong.ctx.shared.request_id"
+        user_id: "return kong.ctx.shared.authenticated_user_id"
+
+  # 9. Prometheus Metrics
+  - name: prometheus
+    config:
+      per_consumer: true
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+
+# LinkedIn Service Specific Security Plugins
+- route: linkedin-automation
+  plugins:
+    # Ultra-conservative rate limiting for LinkedIn compliance
+    - name: rate-limiting
+      config:
+        minute: 1    # Max 1 automation request per minute
+        hour: 15     # Max 15 automation requests per hour (15% of LinkedIn limit)
+        day: 100     # Max 100 automation requests per day
+        policy: redis
+        redis_host: inergize-redis
+        redis_port: 6379
+        redis_password: ${REDIS_PASSWORD}
+        redis_database: 3
+        fault_tolerant: false  # Strict enforcement
+        error_code: 429
+        error_message: "LinkedIn automation rate limit exceeded - compliance protection active"
+
+    # Request validation for automation
+    - name: request-validator
+      config:
+        body_schema: |
+          {
+            "type": "object",
+            "properties": {
+              "action": {"type": "string", "enum": ["connect", "like", "comment", "view"]},
+              "target": {"type": "string"},
+              "delay": {"type": "number", "minimum": 45, "maximum": 300}
+            },
+            "required": ["action", "target", "delay"]
+          }
+
+# Auth Service Specific Security
+- route: auth-login
+  plugins:
+    # Stricter rate limiting for login attempts
+    - name: rate-limiting
+      config:
+        minute: 5
+        hour: 20
+        day: 100
+        policy: redis
+        redis_host: inergize-redis
+        redis_port: 6379
+        redis_password: ${REDIS_PASSWORD}
+        redis_database: 4
+
+    # Login attempt logging
+    - name: request-termination
+      enabled: false  # Only enable during attacks
+      config:
+        status_code: 503
+        message: "Service temporarily unavailable due to security measures"
+
+# Circuit Breaker for Service Health
+- service: linkedin-service
+  plugins:
+    - name: proxy-cache
+      config:
+        response_code: [200, 301, 302]
+        request_method: ["GET"]
+        content_type: ["application/json"]
+        cache_ttl: 300
+        strategy: memory
+
+# JWT Authentication for API Routes
+- route: user-profile
+  plugins:
+    - name: jwt
+      config:
+        key_claim_name: kid
+        secret_is_base64: false
+        run_on_preflight: false
+
+- route: analytics-metrics  
+  plugins:
+    - name: jwt
+      config:
+        key_claim_name: kid
+        secret_is_base64: false
+
+- route: ai-content
+  plugins:
+    - name: jwt
+      config:
+        key_claim_name: kid
+        secret_is_base64: false
+
+# AI Service Rate Limiting by Subscription Tier
+- route: ai-content
+  plugins:
+    - name: rate-limiting-advanced
+      config:
+        limit:
+          - 10  # Free tier: 10 requests/hour
+          - 100 # Premium tier: 100 requests/hour
+          - 500 # Enterprise tier: 500 requests/hour
+        window_size: [3600]
+        sync_rate: 10
+        strategy: redis
+        redis:
+          host: inergize-redis
+          port: 6379
+          password: ${REDIS_PASSWORD}
+          database: 5
+
+# Consumers for JWT validation
+consumers:
+  - username: inergize-web-app
+    tags: ["web-client"]
+  - username: inergize-mobile-app
+    tags: ["mobile-client"]
+
+# JWT credentials
+jwt_secrets:
+  - consumer: inergize-web-app
+    key: inergize-web-jwt
+    secret: ${JWT_ACCESS_SECRET}
+    algorithm: HS256
+
+  - consumer: inergize-mobile-app
+    key: inergize-mobile-jwt
+    secret: ${JWT_ACCESS_SECRET}
+    algorithm: HS256

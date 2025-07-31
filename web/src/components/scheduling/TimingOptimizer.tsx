@@ -18,7 +18,6 @@ import {
 } from '@/components/ui/select';
 import {
   Zap,
-  TrendingUp,
   Clock,
   Target,
   Brain,
@@ -297,7 +296,7 @@ export const TimingOptimizer: React.FC<TimingOptimizerProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Content Type</label>
-              <Select value={selectedContentType} onValueChange={setSelectedContentType}>
+              <Select value={selectedContentType} onValueChange={(value) => setSelectedContentType(value as typeof selectedContentType)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

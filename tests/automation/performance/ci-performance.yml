@@ -1,0 +1,548 @@
+# CI/CD Performance Testing Pipeline Configuration
+# Automated performance testing with reporting and alerts
+
+name: Performance Testing Pipeline
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/automation-*'
+  pull_request:
+    branches:
+      - main
+      - develop
+  schedule:
+    # Run performance tests daily at 2 AM EST
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of performance test to run'
+        required: true
+        default: 'smoke'
+        type: choice
+        options:
+          - smoke
+          - regression
+          - load
+          - stress
+          - endurance
+      target_environment:
+        description: 'Environment to test against'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production-readonly
+          - performance-test
+
+env:
+  NODE_VERSION: '20'
+  REDIS_VERSION: '7'
+  POSTGRES_VERSION: '15'
+  K6_VERSION: 'latest'
+
+jobs:
+  # Setup and preparation
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      test-matrix: ${{ steps.generate-matrix.outputs.matrix }}
+      environment-url: ${{ steps.set-env.outputs.url }}
+      performance-thresholds: ${{ steps.load-thresholds.outputs.thresholds }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate test matrix
+        id: generate-matrix
+        run: |
+          if [[ "${{ github.event.inputs.test_type }}" != "" ]]; then
+            TEST_TYPE="${{ github.event.inputs.test_type }}"
+          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+            TEST_TYPE="regression"
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            TEST_TYPE="smoke"
+          else
+            TEST_TYPE="smoke"
+          fi
+          
+          case $TEST_TYPE in
+            smoke)
+              MATRIX='{"include":[
+                {"test":"websocket-smoke","max-duration":"2m","connections":50},
+                {"test":"api-smoke","max-duration":"1m","rps":20},
+                {"test":"queue-smoke","max-duration":"1m","jobs":100}
+              ]}'
+              ;;
+            regression)
+              MATRIX='{"include":[
+                {"test":"websocket-concurrency","max-duration":"5m","connections":500},
+                {"test":"api-performance","max-duration":"3m","rps":100},
+                {"test":"queue-reliability","max-duration":"5m","jobs":1000},
+                {"test":"safety-monitoring","max-duration":"3m","concurrent":25}
+              ]}'
+              ;;
+            load)
+              MATRIX='{"include":[
+                {"test":"websocket-load","max-duration":"10m","connections":1000},
+                {"test":"api-load","max-duration":"10m","rps":200},
+                {"test":"queue-load","max-duration":"15m","jobs":5000},
+                {"test":"peak-traffic","max-duration":"8m","peak-rps":500}
+              ]}'
+              ;;
+            stress)
+              MATRIX='{"include":[
+                {"test":"websocket-stress","max-duration":"15m","connections":2000},
+                {"test":"api-stress","max-duration":"15m","rps":500},
+                {"test":"queue-stress","max-duration":"20m","jobs":10000},
+                {"test":"system-stress","max-duration":"20m","full-load":true}
+              ]}'
+              ;;
+            endurance)
+              MATRIX='{"include":[
+                {"test":"websocket-endurance","max-duration":"60m","connections":500},
+                {"test":"api-endurance","max-duration":"60m","rps":100},
+                {"test":"queue-endurance","max-duration":"60m","jobs":5000},
+                {"test":"memory-leak","max-duration":"120m","monitoring":true}
+              ]}'
+              ;;
+          esac
+          
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "test-type=$TEST_TYPE" >> $GITHUB_OUTPUT
+
+      - name: Set environment URL
+        id: set-env
+        run: |
+          if [[ "${{ github.event.inputs.target_environment }}" != "" ]]; then
+            ENV="${{ github.event.inputs.target_environment }}"
+          else
+            ENV="staging"
+          fi
+          
+          case $ENV in
+            staging)
+              echo "url=https://staging-api.inergize.com" >> $GITHUB_OUTPUT
+              echo "websocket-url=wss://staging-ws.inergize.com" >> $GITHUB_OUTPUT
+              ;;
+            production-readonly)
+              echo "url=https://api.inergize.com" >> $GITHUB_OUTPUT
+              echo "websocket-url=wss://ws.inergize.com" >> $GITHUB_OUTPUT
+              ;;
+            performance-test)
+              echo "url=https://perf-api.inergize.com" >> $GITHUB_OUTPUT
+              echo "websocket-url=wss://perf-ws.inergize.com" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: Load performance thresholds
+        id: load-thresholds
+        run: |
+          THRESHOLDS='{
+            "websocket_latency_p95": 100,
+            "websocket_latency_p99": 200,
+            "websocket_error_rate": 0.05,
+            "api_response_time_p95": 500,
+            "api_response_time_p99": 1000,
+            "api_error_rate": 0.10,
+            "queue_processing_success_rate": 0.95,
+            "safety_check_response_time": 1000,
+            "memory_usage_mb": 512,
+            "cpu_usage_percent": 80
+          }'
+          echo "thresholds=$THRESHOLDS" >> $GITHUB_OUTPUT
+
+  # Infrastructure setup for performance testing
+  infrastructure:
+    runs-on: ubuntu-latest
+    needs: setup
+    services:
+      redis:
+        image: redis:${{ env.REDIS_VERSION }}-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+      postgres:
+        image: postgres:${{ env.POSTGRES_VERSION }}-alpine
+        env:
+          POSTGRES_DB: inergize_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm run build:test
+
+      - name: Setup K6
+        run: |
+          curl -s https://dl.k6.io/key.gpg | gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Setup test environment
+        run: |
+          # Copy test configuration
+          cp tests/config/test.env.example tests/config/test.env
+          
+          # Update configuration for CI
+          sed -i 's/REDIS_HOST=localhost/REDIS_HOST=127.0.0.1/' tests/config/test.env
+          sed -i 's/POSTGRES_HOST=localhost/POSTGRES_HOST=127.0.0.1/' tests/config/test.env
+          sed -i 's/TEST_CONCURRENCY=1/TEST_CONCURRENCY=4/' tests/config/test.env
+
+      - name: Verify infrastructure health
+        run: |
+          # Test Redis connection
+          redis-cli -h 127.0.0.1 -p 6379 ping
+          
+          # Test PostgreSQL connection
+          PGPASSWORD=test_password psql -h 127.0.0.1 -U test_user -d inergize_test -c "SELECT 1;"
+          
+          # Verify API endpoints are available
+          if [[ "${{ needs.setup.outputs.environment-url }}" != "" ]]; then
+            curl -f "${{ needs.setup.outputs.environment-url }}/health" || echo "Warning: API endpoint not responding"
+          fi
+
+      - name: Cache test artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            tests/artifacts
+            tests/reports
+          key: perf-test-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+  # Performance test execution
+  performance-tests:
+    runs-on: ubuntu-latest
+    needs: [setup, infrastructure]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.test-matrix) }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            tests/artifacts
+            tests/reports
+          key: perf-test-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Setup K6
+        run: |
+          curl -s https://dl.k6.io/key.gpg | gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Create test directories
+        run: |
+          mkdir -p tests/reports/performance
+          mkdir -p tests/artifacts/performance
+          mkdir -p tests/logs
+
+      - name: Run Jest Performance Tests
+        if: contains(matrix.test, 'websocket') || contains(matrix.test, 'queue')
+        run: |
+          # Set test-specific environment variables
+          export TEST_TYPE="${{ matrix.test }}"
+          export MAX_DURATION="${{ matrix.max-duration }}"
+          export PERFORMANCE_THRESHOLDS='${{ needs.setup.outputs.performance-thresholds }}'
+          
+          # Run Jest tests with performance configuration
+          npm run test:performance -- \
+            --testNamePattern="${{ matrix.test }}" \
+            --verbose \
+            --detectOpenHandles \
+            --forceExit \
+            --maxWorkers=1 \
+            --testTimeout=600000 \
+            --json \
+            --outputFile=tests/reports/performance/jest-${{ matrix.test }}-results.json
+
+      - name: Run K6 Load Tests
+        if: contains(matrix.test, 'api') || contains(matrix.test, 'load') || contains(matrix.test, 'stress')
+        run: |
+          # Set K6 environment variables
+          export K6_OUT=json=tests/reports/performance/k6-${{ matrix.test }}-results.json
+          export BASE_URL="${{ needs.setup.outputs.environment-url }}"
+          export WEBSOCKET_URL="${{ needs.setup.outputs.websocket-url }}"
+          export TEST_DURATION="${{ matrix.max-duration }}"
+          
+          # Determine K6 script based on test type
+          if [[ "${{ matrix.test }}" == *"api"* ]]; then
+            K6_SCRIPT="tests/automation/performance/load-testing.k6.js"
+            K6_OPTIONS="--env SCENARIO=api_performance"
+          elif [[ "${{ matrix.test }}" == *"load"* ]]; then
+            K6_SCRIPT="tests/automation/performance/load-testing.k6.js"
+            K6_OPTIONS="--env SCENARIO=peak_traffic"
+          elif [[ "${{ matrix.test }}" == *"stress"* ]]; then
+            K6_SCRIPT="tests/automation/performance/load-testing.k6.js"
+            K6_OPTIONS="--env SCENARIO=websocket_load,api_performance,queue_stress"
+          fi
+          
+          # Run K6 test
+          k6 run $K6_OPTIONS \
+            --out json=tests/reports/performance/k6-${{ matrix.test }}-results.json \
+            --out csv=tests/reports/performance/k6-${{ matrix.test }}-metrics.csv \
+            $K6_SCRIPT
+
+      - name: Generate performance report
+        if: always()
+        run: |
+          node tests/scripts/generate-performance-report.js \
+            --test-name="${{ matrix.test }}" \
+            --results-dir="tests/reports/performance" \
+            --output-file="tests/reports/performance/${{ matrix.test }}-report.html" \
+            --thresholds='${{ needs.setup.outputs.performance-thresholds }}'
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results-${{ matrix.test }}
+          path: |
+            tests/reports/performance/
+            tests/logs/
+            tests/artifacts/performance/
+          retention-days: 30
+
+      - name: Check performance thresholds
+        if: always()
+        run: |
+          node tests/scripts/check-performance-thresholds.js \
+            --results-file="tests/reports/performance/jest-${{ matrix.test }}-results.json" \
+            --k6-results-file="tests/reports/performance/k6-${{ matrix.test }}-results.json" \
+            --thresholds='${{ needs.setup.outputs.performance-thresholds }}' \
+            --fail-on-threshold-breach=true
+
+  # Aggregate results and reporting
+  performance-report:
+    runs-on: ubuntu-latest
+    needs: [setup, performance-tests]
+    if: always()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Download all test artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: test-results/
+
+      - name: Generate consolidated report
+        run: |
+          mkdir -p reports/performance
+          
+          node tests/scripts/consolidate-performance-results.js \
+            --results-dir="test-results/" \
+            --output-dir="reports/performance/" \
+            --test-type="${{ needs.setup.outputs.test-type }}" \
+            --environment="${{ github.event.inputs.target_environment || 'staging' }}" \
+            --thresholds='${{ needs.setup.outputs.performance-thresholds }}'
+
+      - name: Generate performance dashboard
+        run: |
+          node tests/scripts/generate-performance-dashboard.js \
+            --results-dir="test-results/" \
+            --output-file="reports/performance/dashboard.html" \
+            --historical-data-days=30
+
+      - name: Upload consolidated reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: consolidated-performance-report
+          path: |
+            reports/performance/
+          retention-days: 90
+
+      - name: Comment PR with performance results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            // Read performance summary
+            const summaryPath = 'reports/performance/summary.json';
+            if (!fs.existsSync(summaryPath)) {
+              console.log('No performance summary found');
+              return;
+            }
+            
+            const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
+            
+            let comment = `## 🚀 Performance Test Results\n\n`;
+            comment += `**Test Type:** ${{ needs.setup.outputs.test-type }}\n`;
+            comment += `**Environment:** ${{ github.event.inputs.target_environment || 'staging' }}\n`;
+            comment += `**Commit:** ${context.sha.substring(0, 7)}\n\n`;
+            
+            comment += `### 📊 Key Metrics\n\n`;
+            comment += `| Metric | Value | Threshold | Status |\n`;
+            comment += `|--------|-------|-----------|--------|\n`;
+            
+            for (const [metric, data] of Object.entries(summary.metrics)) {
+              const status = data.passed ? '✅' : '❌';
+              comment += `| ${metric} | ${data.value} | ${data.threshold} | ${status} |\n`;
+            }
+            
+            comment += `\n### 🎯 Test Results Summary\n\n`;
+            comment += `- **Total Tests:** ${summary.totalTests}\n`;
+            comment += `- **Passed:** ${summary.passedTests} ✅\n`;
+            comment += `- **Failed:** ${summary.failedTests} ❌\n`;
+            comment += `- **Overall Success Rate:** ${summary.successRate}%\n\n`;
+            
+            if (summary.failedTests > 0) {
+              comment += `### ⚠️ Performance Issues Detected\n\n`;
+              summary.failures.forEach(failure => {
+                comment += `- **${failure.test}:** ${failure.reason}\n`;
+              });
+              comment += `\n`;
+            }
+            
+            comment += `### 📈 Detailed Reports\n\n`;
+            comment += `- [Performance Dashboard](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\n`;
+            comment += `- [Historical Trends](https://performance-dashboard.inergize.com)\n`;
+            
+            // Post comment
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Send Slack notification
+        if: failure() || (success() && github.event_name == 'schedule')
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#engineering-alerts'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+          custom_payload: |
+            {
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "${{ job.status == 'success' && '🚀 Performance Tests Passed' || '🚨 Performance Tests Failed' }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {"type": "mrkdwn", "text": "*Repository:* ${{ github.repository }}"},
+                    {"type": "mrkdwn", "text": "*Test Type:* ${{ needs.setup.outputs.test-type }}"},
+                    {"type": "mrkdwn", "text": "*Environment:* ${{ github.event.inputs.target_environment || 'staging' }}"},
+                    {"type": "mrkdwn", "text": "*Commit:* ${{ github.sha }}"}
+                  ]
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {"type": "plain_text", "text": "View Results"},
+                      "url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }
+
+  # Cleanup and maintenance
+  cleanup:
+    runs-on: ubuntu-latest
+    needs: [performance-tests, performance-report]
+    if: always()
+    
+    steps:
+      - name: Cleanup old test data
+        run: |
+          # Clean up old performance test results (keep last 30 days)
+          find test-results/ -name "*.json" -mtime +30 -delete 2>/dev/null || true
+          find test-results/ -name "*.csv" -mtime +30 -delete 2>/dev/null || true
+          
+          echo "Cleanup completed"
+
+      - name: Update performance baselines
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          # Update performance baselines for main branch
+          echo "Would update performance baselines here"
+          # This would typically update a database or file with current performance metrics
+          # to use as baselines for future comparisons
+
+# Performance test configuration templates
+performance_test_configs:
+  smoke:
+    description: "Quick performance validation"
+    max_duration: "2m"
+    load_level: "minimal"
+    
+  regression:
+    description: "Standard performance regression testing"
+    max_duration: "5m"
+    load_level: "moderate"
+    
+  load:
+    description: "Load testing under expected traffic"
+    max_duration: "10m"
+    load_level: "high"
+    
+  stress:
+    description: "Stress testing beyond normal capacity"
+    max_duration: "15m"
+    load_level: "maximum"
+    
+  endurance:
+    description: "Long-running stability testing"
+    max_duration: "60m"
+    load_level: "sustained"

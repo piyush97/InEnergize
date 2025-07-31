@@ -12,7 +12,6 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
-  Eye,
   Clock,
   TrendingUp,
   AlertTriangle,
@@ -314,7 +313,7 @@ export const CalendarInterface: React.FC<CalendarInterfaceProps> = ({
                 </span>
                 
                 {showOptimalTimes && optimalSlotsForDay.length > 0 && (
-                  <Zap className="h-3 w-3 text-yellow-500" title="Optimal posting time" />
+                  <Zap className="h-3 w-3 text-yellow-500" />
                 )}
               </div>
 

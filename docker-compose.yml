@@ -271,6 +271,51 @@ services:
       retries: 3
       start_period: 30s
 
+  # WebSocket Service for Real-time Updates (Phase 3)
+  websocket-service:
+    build:
+      context: ./services/websocket-service
+      dockerfile: Dockerfile
+    container_name: inergize-websocket-service
+    environment:
+      - NODE_ENV=development
+      - PORT=3007
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=inergize_redis_password
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - LOG_LEVEL=info
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+      - RATE_LIMIT_WINDOW_MS=900000
+      - RATE_LIMIT_MAX_REQUESTS=1000
+      - WS_PING_TIMEOUT=60000
+      - WS_PING_INTERVAL=25000
+      - WS_MAX_HTTP_BUFFER_SIZE=1000000
+      - ENABLE_METRICS=true
+    ports:
+      - "3007:3007"
+    networks:
+      - inergize-network
+    depends_on:
+      - redis
+      - auth-service
+      - linkedin-service
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3007/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   # Enhanced Analytics Service with TimescaleDB
   analytics-service:
     build:

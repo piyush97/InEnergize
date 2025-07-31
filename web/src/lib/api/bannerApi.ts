@@ -2,6 +2,9 @@ import axios from 'axios'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005'
 
+// Helper type for API error handling
+type ApiError = { response?: { data?: { error?: { message?: string } } } };
+
 // Types
 export interface BrandingOptions {
   companyName?: string
@@ -110,7 +113,7 @@ export class BannerApi {
       
       return response.data.data
     } catch (error: unknown) {
-      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to generate banner'
+      const message = (error as ApiError)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to generate banner'
       throw new Error(message)
     }
   }
@@ -134,7 +137,7 @@ export class BannerApi {
       
       return response.data.data.variations
     } catch (error: unknown) {
-      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to generate variations'
+      const message = (error as ApiError)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to generate variations'
       throw new Error(message)
     }
   }
@@ -152,7 +155,7 @@ export class BannerApi {
       
       return response.data.data.templates
     } catch (error: unknown) {
-      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to load templates'
+      const message = (error as ApiError)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to load templates'
       throw new Error(message)
     }
   }
@@ -170,7 +173,7 @@ export class BannerApi {
       
       return response.data.data
     } catch (error: unknown) {
-      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to load specifications'
+      const message = (error as ApiError)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to load specifications'
       throw new Error(message)
     }
   }
@@ -199,7 +202,7 @@ export class BannerApi {
       
       return response.data.data
     } catch (error: unknown) {
-      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to preview prompt'
+      const message = (error as ApiError)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to preview prompt'
       throw new Error(message)
     }
   }
@@ -233,7 +236,7 @@ export class BannerApi {
       
       return response.data.data
     } catch (error: unknown) {
-      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to load banners'
+      const message = (error as ApiError)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to load banners'
       throw new Error(message)
     }
   }
@@ -249,7 +252,7 @@ export class BannerApi {
         throw new Error(response.data.error?.message || 'Failed to delete banner')
       }
     } catch (error: unknown) {
-      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to delete banner'
+      const message = (error as ApiError)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to delete banner'
       throw new Error(message)
     }
   }
@@ -270,7 +273,7 @@ export class BannerApi {
         throw new Error(response.data.error?.message || 'Failed to update banner')
       }
     } catch (error: unknown) {
-      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to update banner'
+      const message = (error as ApiError)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to update banner'
       throw new Error(message)
     }
   }
@@ -286,7 +289,7 @@ export class BannerApi {
       
       return response.data
     } catch (error: unknown) {
-      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to download banner'
+      const message = (error as ApiError)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to download banner'
       throw new Error(message)
     }
   }
@@ -315,7 +318,7 @@ export class BannerApi {
       
       return response.data.data
     } catch (error: unknown) {
-      const message = (error as any)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to load analytics'
+      const message = (error as ApiError)?.response?.data?.error?.message || (error as Error)?.message || 'Failed to load analytics'
       throw new Error(message)
     }
   }

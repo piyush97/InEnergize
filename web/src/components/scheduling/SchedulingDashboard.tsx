@@ -14,7 +14,6 @@ import {
   Clock,
   TrendingUp,
   BarChart3,
-  Settings,
   Play,
   Pause,
   AlertCircle,
@@ -427,7 +426,7 @@ export const SchedulingDashboard: React.FC<SchedulingDashboardProps> = ({
       </div>
 
       {/* Main Content - Tabs */}
-      <Tabs defaultValue="calendar" className="space-y-4">
+      <Tabs value="calendar" className="space-y-4">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="calendar">Calendar View</TabsTrigger>
           <TabsTrigger value="queue">Content Queue</TabsTrigger>

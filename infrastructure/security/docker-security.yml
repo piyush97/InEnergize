@@ -1,0 +1,354 @@
+# Docker Security Configuration for InErgize
+# Production-ready container security hardening
+
+version: '3.8'
+
+# Security-hardened services configuration
+services:
+  # PostgreSQL with security hardening
+  postgres:
+    image: postgres:16.1-alpine3.19  # Specific version, Alpine for minimal attack surface
+    container_name: inergize-postgres-secure
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-inergize_prod}
+      POSTGRES_USER: ${POSTGRES_USER:-inergize_user}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+      # Security settings
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data:Z  # SELinux label
+      - /dev/urandom:/dev/random:ro  # Better entropy
+    ports:
+      - "127.0.0.1:5432:5432"  # Bind only to localhost
+    networks:
+      - inergize-secure-network
+    restart: unless-stopped
+    secrets:
+      - postgres_password
+    security_opt:
+      - no-new-privileges:true  # Prevent privilege escalation
+      - seccomp:unconfined  # Can be tightened with custom profile
+    read_only: true  # Read-only root filesystem
+    tmpfs:
+      - /tmp:noexec,nosuid,size=200m
+      - /var/run:noexec,nosuid,size=100m
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+      restart_policy:
+        condition: unless-stopped
+        delay: 10s
+        max_attempts: 5
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-inergize_user} -d ${POSTGRES_DB:-inergize_prod}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=postgres,environment=${ENVIRONMENT:-production}"
+
+  # TimescaleDB with enhanced security
+  timescale:
+    image: timescale/timescaledb:2.13.0-pg16  # Specific version
+    container_name: inergize-timescale-secure
+    environment:
+      POSTGRES_DB: ${TIMESCALE_DB:-inergize_analytics}
+      POSTGRES_USER: ${TIMESCALE_USER:-timescale_user}
+      POSTGRES_PASSWORD_FILE: /run/secrets/timescale_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+      # TimescaleDB optimizations with security
+      POSTGRES_SHARED_PRELOAD_LIBRARIES: timescaledb
+      POSTGRES_MAX_CONNECTIONS: 200
+      POSTGRES_SHARED_BUFFERS: 256MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+      POSTGRES_MAINTENANCE_WORK_MEM: 64MB
+      POSTGRES_CHECKPOINT_COMPLETION_TARGET: 0.9
+      POSTGRES_WAL_BUFFERS: 16MB
+      POSTGRES_DEFAULT_STATISTICS_TARGET: 100
+      POSTGRES_RANDOM_PAGE_COST: 1.1
+      POSTGRES_EFFECTIVE_IO_CONCURRENCY: 200
+      TIMESCALEDB_TELEMETRY: off
+      TIMESCALEDB_MAX_BACKGROUND_WORKERS: 8
+      # Security settings
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data:Z
+      - /dev/urandom:/dev/random:ro
+    ports:
+      - "127.0.0.1:5433:5432"
+    networks:
+      - inergize-secure-network
+    restart: unless-stopped
+    secrets:
+      - timescale_password
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:unconfined
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=300m
+      - /var/run:noexec,nosuid,size=100m
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '3.0'
+        reservations:
+          memory: 2G
+          cpus: '1.5'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TIMESCALE_USER:-timescale_user} -d ${TIMESCALE_DB:-inergize_analytics}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=timescale,environment=${ENVIRONMENT:-production}"
+
+  # Redis with authentication and security
+  redis:
+    image: redis:7.2.3-alpine3.19  # Specific Alpine version
+    container_name: inergize-redis-secure
+    command: >
+      redis-server
+      --requirepass-file /run/secrets/redis_password
+      --appendonly yes
+      --appendfsync everysec
+      --no-appendfsync-on-rewrite no
+      --auto-aof-rewrite-percentage 100
+      --auto-aof-rewrite-min-size 64mb
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+      --timeout 300
+      --tcp-keepalive 60
+      --maxclients 1000
+      --bind 0.0.0.0
+      --protected-mode yes
+      --port 6379
+      --logfile ""
+      --syslog-enabled yes
+      --syslog-ident redis
+    volumes:
+      - redis_data:/data:Z
+    ports:
+      - "127.0.0.1:6379:6379"
+    networks:
+      - inergize-secure-network
+    restart: unless-stopped
+    secrets:
+      - redis_password
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:unconfined
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "$(cat /run/secrets/redis_password)", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=redis,environment=${ENVIRONMENT:-production}"
+
+  # Elasticsearch with security enabled
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3  # Latest stable with security
+    container_name: inergize-elasticsearch-secure
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=true
+      - xpack.security.http.ssl.enabled=false  # Enable in production with proper certs
+      - xpack.security.transport.ssl.enabled=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - ELASTIC_PASSWORD_FILE=/run/secrets/elastic_password
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data:Z
+    ports:
+      - "127.0.0.1:9200:9200"
+    networks:
+      - inergize-secure-network
+    restart: unless-stopped
+    secrets:
+      - elastic_password
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:unconfined
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=elasticsearch,environment=${ENVIRONMENT:-production}"
+
+  # Kibana with security
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.3
+    container_name: inergize-kibana-secure
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD_FILE: /run/secrets/elastic_password
+      XPACK_SECURITY_ENABLED: true
+      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: /run/secrets/kibana_encryption_key
+    ports:
+      - "127.0.0.1:5601:5601"
+    networks:
+      - inergize-secure-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+    secrets:
+      - elastic_password
+      - kibana_encryption_key
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=kibana,environment=${ENVIRONMENT:-production}"
+
+# Secure networking
+networks:
+  inergize-secure-network:
+    driver: bridge
+    name: inergize-secure-network
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "false"  # Disable inter-container communication by default
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+
+# Docker secrets for sensitive data
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  timescale_password:
+    file: ./secrets/timescale_password.txt
+  redis_password:
+    file: ./secrets/redis_password.txt
+  elastic_password:
+    file: ./secrets/elastic_password.txt
+  kibana_encryption_key:
+    file: ./secrets/kibana_encryption_key.txt
+
+# Secure volumes with encryption at rest
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/lib/inergize/postgres
+  timescale_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/lib/inergize/timescale
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/lib/inergize/redis
+  elasticsearch_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/lib/inergize/elasticsearch
+
+# Additional security configurations
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+    labels: "environment=${ENVIRONMENT:-production}"
+
+x-security: &default-security
+  security_opt:
+    - no-new-privileges:true
+    - seccomp:unconfined
+  read_only: true
+  tmpfs:
+    - /tmp:noexec,nosuid,size=100m
+
+x-resources: &default-resources
+  deploy:
+    resources:
+      limits:
+        memory: 512M
+        cpus: '1.0'
+      reservations:
+        memory: 256M
+        cpus: '0.5'
+    restart_policy:
+      condition: unless-stopped
+      delay: 10s
+      max_attempts: 5

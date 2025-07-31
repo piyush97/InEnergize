@@ -16,7 +16,7 @@
 InErgize helps users optimize their LinkedIn profiles and content strategy through:
 
 - **🤖 AI-Powered Profile Optimization**: Intelligent suggestions for headlines, summaries, and skills
-- **🎨 Content Generation Suite**: AI-driven post creation, banner generation, and carousel builders  
+- **🎨 Content Generation Suite**: AI-driven post creation, banner generation, and carousel builders
 - **📊 Advanced Analytics**: Real-time profile performance tracking and industry benchmarking
 - **🛡️ Enterprise-Grade Safe Automation**: LinkedIn-compliant networking with real-time safety monitoring
 - **📈 Comprehensive Dashboard**: Centralized hub for all LinkedIn optimization activities
@@ -26,7 +26,7 @@ InErgize helps users optimize their LinkedIn profiles and content strategy throu
 
 - **🛡️ Safety-First Automation**: Ultra-conservative limits (15% of LinkedIn's limits) with automatic emergency stops
 - **🤖 AI-Driven Intelligence**: GPT-4 and DALL-E integration for premium content creation
-- **📊 Real-Time Analytics**: TimescaleDB-powered analytics with live performance tracking  
+- **📊 Real-Time Analytics**: TimescaleDB-powered analytics with live performance tracking
 - **🏢 Enterprise-Ready**: Scalable microservices architecture designed for 10,000+ concurrent users
 - **⚖️ Compliance Excellence**: 99.5% safety score with comprehensive LinkedIn TOS adherence
 - **📱 Production-Ready**: Complete full-stack implementation with 95%+ test coverage
@@ -35,29 +35,33 @@ InErgize helps users optimize their LinkedIn profiles and content strategy throu
 
 ![InErgize Homepage](web/docs/images/homepage-preview.png)
 
-*Professional LinkedIn optimization platform with modern UI/UX, featuring AI-powered tools for profile optimization, content generation, and smart networking automation.*
+_Professional LinkedIn optimization platform with modern UI/UX, featuring AI-powered tools for profile optimization, content generation, and smart networking automation._
 
 ### ✨ Frontend Features Implemented
 
 **🎨 Modern UI/UX Design**
+
 - Professional landing page with colorful feature showcase
-- Responsive design with mobile-first approach  
+- Responsive design with mobile-first approach
 - Custom Tailwind CSS v4 theme with LinkedIn-inspired colors
 - Interactive navigation with smooth animations
 
 **🔐 Complete Authentication System**
+
 - User registration and login with form validation
 - NextAuth integration for OAuth providers
 - Protected routes and session management
 - Loading states and error handling
 
 **📋 Comprehensive User Onboarding**
+
 - 4-step wizard with progress tracking
 - LinkedIn connection flow with OAuth
 - Profile setup and preferences configuration
 - Success completion with guided next actions
 
 **📊 Analytics Dashboard**
+
 - Overview stats with performance metrics
 - Profile progress tracking with completion percentage
 - Quick actions panel for common tasks
@@ -65,6 +69,7 @@ InErgize helps users optimize their LinkedIn profiles and content strategy throu
 - Welcome modal for new users
 
 **⚙️ Technical Excellence**
+
 - TypeScript 5.8+ with strict mode
 - React 19 with modern hooks and patterns
 - TanStack Query for server state management
@@ -205,7 +210,7 @@ InErgize/
    ```bash
    # Copy environment templates
    cp .env.example .env.local
-   
+
    # Configure your environment variables
    # See Environment Configuration section below
    ```
@@ -225,10 +230,10 @@ InErgize/
 
    # Check service health
    docker-compose ps
-   
+
    # View logs
    docker-compose logs -f
-   
+
    # For development with hot reload (optional)
    docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
    ```
@@ -238,7 +243,7 @@ InErgize/
    ```bash
    # Deploy Kong with enterprise features (Recommended)
    ./scripts/kong-production-deploy.sh development
-   
+
    # Run comprehensive Kong tests
    ./scripts/kong-test-suite.sh
    ```
@@ -246,7 +251,6 @@ InErgize/
 6. **Access Services**
 
    Once all containers are running, you can access:
-
    - **Web Application**: http://localhost:3000
    - **Kong API Gateway**: http://localhost:8000 (main proxy)
    - **Kong Manager Dashboard**: http://localhost:8002 (web UI)
@@ -410,6 +414,7 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 ### ✅ Phase 2B Complete: Enterprise LinkedIn Automation System
 
 **🚀 LinkedIn Automation Infrastructure (Complete)**
+
 - [x] **Connection Automation Service** - Ultra-conservative 15 connections/day with intelligent queuing
 - [x] **Engagement Automation Service** - Smart content scoring with 30 likes, 8 comments, 25 views, 5 follows/day
 - [x] **Safety Monitoring Service** - Real-time monitoring with automatic suspension and account health scoring
@@ -422,6 +427,7 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 - [x] **Template Analytics** - Usage tracking, success rates, and intelligent template selection
 
 **🛡️ Safety & Compliance Features (Complete)**
+
 - [x] **Ultra-Conservative Limits** - 15% of LinkedIn's published limits for maximum safety
 - [x] **Real-Time Safety Monitoring** - Per-minute safety checks with automatic emergency stops
 - [x] **Account Health Scoring** - 0-100 scale monitoring with multiple risk factors
@@ -432,6 +438,7 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 - [x] **Comprehensive Audit Trails** - Complete activity logging and compliance tracking
 
 **📊 Infrastructure & DevOps (Complete)**
+
 - [x] System architecture design complete
 - [x] Database schema design complete (Prisma with 11 models)
 - [x] Component architecture design complete
@@ -450,6 +457,7 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 - [x] Production deployment configurations
 
 **Development Environment & Testing (Complete)**
+
 - [x] Comprehensive testing infrastructure (Jest 30, Playwright, RTL)
 - [x] End-to-end testing with Playwright (multi-browser)
 - [x] Integration testing with database helpers
@@ -463,8 +471,9 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 - [x] LinkedIn service comprehensive testing (unit, integration, E2E)
 
 **Authentication & User Management Services (Complete)**
+
 - [x] **JWT Authentication Service** - Complete implementation with refresh tokens
-- [x] **Multi-Factor Authentication (MFA)** - TOTP with QR codes and backup codes  
+- [x] **Multi-Factor Authentication (MFA)** - TOTP with QR codes and backup codes
 - [x] **Password Security** - bcrypt hashing with strength validation and breach checking
 - [x] **Rate Limiting Service** - Redis-based brute-force protection with suspicious activity detection
 - [x] **User Management Service** - Full CRUD with profile management and subscription tiers
@@ -477,6 +486,7 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 - [x] **Service Health Monitoring** - Comprehensive health checks and metrics
 
 **LinkedIn Integration Service (Complete)**
+
 - [x] **OAuth 2.0 LinkedIn Integration** - Secure token handling with automatic refresh
 - [x] **Profile Data Synchronization** - Complete LinkedIn profile parsing and storage
 - [x] **Profile Completeness Scoring** - Advanced algorithm with 0-100 scale scoring
@@ -486,6 +496,7 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 - [x] **LinkedIn Service Testing** - 95%+ test coverage with unit, integration, and E2E tests
 
 **Analytics & Real-Time Data Pipeline (Complete)**
+
 - [x] **TimescaleDB Analytics Service** - Time-series database with hypertables
 - [x] **Real-Time WebSocket Streaming** - Live metrics with JWT authentication
 - [x] **Redis Caching Layer** - 5-minute TTL for performance optimization
@@ -494,6 +505,7 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 - [x] **Docker Containerization** - Multi-stage builds for production deployment
 
 **Frontend Development (Complete)**
+
 - [x] Modern Next.js 15 web application with TypeScript 5.8+
 - [x] Tailwind CSS v4 implementation with custom design system
 - [x] **Complete Authentication UI System** - Login, register, password reset, profile management
@@ -509,6 +521,7 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 - [x] Form validation with comprehensive error handling
 
 **Current Status: Phase 2B Complete ✅**
+
 - 🟢 **Authentication System** - Full-stack JWT, MFA, RBAC operational
 - 🟢 **LinkedIn Integration** - OAuth, profile sync, rate limiting active
 - 🟢 **Analytics Pipeline** - TimescaleDB, WebSocket, real-time dashboard
@@ -528,6 +541,7 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 - 🟢 **Comprehensive testing** - 95%+ coverage across all services
 
 **🎯 Ready for Phase 3: Frontend Automation UI**
+
 - 🎯 **Automation Dashboard UI** - Interface for connection/engagement automation
 - 🎯 **Safety Monitoring Dashboard** - Real-time status and alert management
 - 🎯 **Template Management UI** - Create, edit, and analyze message templates
@@ -537,6 +551,7 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 ### Development Roadmap & Milestones
 
 **Phase 1B Complete ✅**
+
 - ✅ Complete infrastructure and testing setup
 - ✅ Development environment automation
 - ✅ CI/CD pipelines with security scanning
@@ -545,6 +560,7 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 - ✅ Monitoring and alerting infrastructure
 
 **Phase 2B Complete ✅ (Current)**
+
 - ✅ **JWT Authentication Service** - Complete with refresh tokens and MFA
 - ✅ **User Management Service** - Full profile and subscription management
 - ✅ **LinkedIn Integration Service** - OAuth 2.0, profile sync, rate limiting complete
@@ -560,6 +576,7 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 - ✅ **Service Health Monitoring** - Health checks and metrics across all services
 
 **Phase 3 Targets (Next 1-2 Months)**
+
 - 🎯 **Automation Frontend UI** - Dashboard for connection/engagement automation controls
 - 🎯 **Safety Monitoring UI** - Real-time status dashboard with alert management
 - 🎯 **Template Management UI** - Create, edit, and analyze message templates
@@ -567,6 +584,7 @@ Each service has its own configuration file in `services/{service-name}/.env`. R
 - 🎯 **Enhanced Analytics** - Predictive analytics and automation performance metrics
 
 **Phase 4 Goals (Months 3-4)**
+
 - 🛣️ **AI Content Generation** - GPT-4 integration for profile optimization suggestions
 - 🛣️ **Banner Generation** - DALL-E 3 banner creation with custom branding
 - 🛣️ **Content Creation Tools** - Templates and automation for LinkedIn posts
@@ -687,6 +705,7 @@ curl http://localhost:3001/health              # Test auth service health
 The project includes production-ready CI/CD pipelines:
 
 **Main CI/CD Pipeline (.github/workflows/ci.yml)**
+
 - **Multi-Service Builds**: Docker images for all 3 services (auth, user, web)
 - **Comprehensive Testing**: Unit, integration, E2E, and performance tests
 - **Quality Gates**: ESLint, TypeScript checking, test coverage validation
@@ -695,7 +714,8 @@ The project includes production-ready CI/CD pipelines:
 - **Multi-Environment Deployment**: Automated deployment to dev/staging/prod
 - **Kubernetes Integration**: Automated K8s manifest deployment
 
-**Security Pipeline (.github/workflows/security.yml)**  
+**Security Pipeline (.github/workflows/security.yml)**
+
 - **Dependency Scanning**: npm audit with SARIF reporting
 - **Static Code Analysis**: CodeQL security analysis
 - **Container Security**: Trivy and Grype vulnerability scanning
@@ -705,6 +725,7 @@ The project includes production-ready CI/CD pipelines:
 - **SBOM Generation**: Software Bill of Materials
 
 **Release Pipeline (.github/workflows/release.yml)**
+
 - **Automated Versioning**: Semantic versioning with changelog
 - **Multi-Platform Builds**: Docker images for AMD64 and ARM64
 - **Security Validation**: Pre-release security scans
@@ -738,7 +759,7 @@ docker-compose -f docker-compose.prod.yml up -d                          # Produ
 #### Infrastructure Requirements
 
 - **Kubernetes Cluster**: v1.25+ with ingress controller
-- **Domain & SSL**: Wildcard certificate for *.inergize.com
+- **Domain & SSL**: Wildcard certificate for \*.inergize.com
 - **Databases**: Managed PostgreSQL 14+ and Redis 6+ clusters
 - **External Services**: LinkedIn Developer, OpenAI, Stripe accounts
 - **Monitoring**: Prometheus, Grafana, Alertmanager cluster
@@ -810,7 +831,7 @@ curl http://localhost:8001/status              # Kong admin status ✅
 curl http://localhost:8002                     # Kong Manager dashboard ✅
 curl http://localhost:8001/metrics             # Kong Prometheus metrics ✅
 
-# Infrastructure Services (All Healthy)  
+# Infrastructure Services (All Healthy)
 curl http://localhost:9200/_cluster/health     # Elasticsearch ✅
 docker exec inergize-postgres pg_isready -U inergize_user -d inergize_dev  # PostgreSQL ✅
 docker exec inergize-redis redis-cli -a inergize_redis_password ping       # Redis ✅
@@ -845,6 +866,7 @@ docker network ls | grep inergize            # Check network configuration
 #### Common Issues
 
 **Services not starting:**
+
 ```bash
 # Check service dependencies
 docker-compose up -d postgres redis
@@ -856,6 +878,7 @@ docker-compose up -d
 ```
 
 **Kong API Gateway issues:**
+
 ```bash
 # Check Kong configuration syntax
 docker-compose logs kong
@@ -870,6 +893,7 @@ docker-compose logs kong
 ```
 
 **Port conflicts:**
+
 ```bash
 # Check what's using the ports
 lsof -i :3000  # Web app
@@ -880,6 +904,7 @@ lsof -i :6379  # Redis
 ```
 
 **Database connection issues:**
+
 ```bash
 # Connect to database manually
 docker-compose exec postgres psql -U inergize_user -d inergize_dev
@@ -889,6 +914,7 @@ docker-compose logs postgres
 ```
 
 **Health check failures:**
+
 ```bash
 # Check if services are responding
 curl -v http://localhost:3000/api/health
@@ -944,7 +970,7 @@ docker-compose logs -f web-app
    ```bash
    # Automated setup (recommended)
    ./scripts/dev-setup.sh
-   
+
    # Manual setup
    npm ci                          # Install dependencies
    docker-compose up -d            # Start infrastructure
@@ -961,14 +987,14 @@ docker-compose logs -f web-app
    npm run lint                    # Code linting
    npm run type-check              # TypeScript validation
    npm run format                  # Code formatting
-   
+
    # Advanced testing
    npm run test:e2e                # End-to-end tests
    npm run test:integration        # Integration tests
    npm run test:api                # API contract tests
    ```
 
-3. **Commit Standards**
+4. **Commit Standards**
 
    ```bash
    # Use conventional commits
@@ -977,14 +1003,13 @@ docker-compose logs -f web-app
    git commit -m "docs(api): update authentication endpoints"
    ```
 
-4. **Testing Requirements**
-
+5. **Testing Requirements**
    - Unit tests for all new functionality (90%+ coverage)
    - Integration tests for API endpoints
    - E2E tests for critical user flows
    - Security tests for sensitive operations
 
-5. **Code Review Process**
+6. **Code Review Process**
    - All changes require pull request review
    - Automated CI/CD checks must pass
    - Security review for authentication/authorization changes

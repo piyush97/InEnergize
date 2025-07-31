@@ -5,7 +5,7 @@
 
 'use client';
 
-import React, { Component, ErrorInfo, ReactNode, Suspense } from 'react';
+import React, { Component, ComponentType, ErrorInfo, ReactNode, Suspense } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -281,7 +281,7 @@ Timestamp: ${new Date().toISOString()}
             retryCount={retryCount}
             maxRetries={maxRetries}
             errorId={errorId}
-            onReport={this.sendErrorReport}
+            onReport={() => errorInfo && this.sendErrorReport(error, errorInfo, errorId)}
             level={level}
           />
         );
@@ -502,7 +502,7 @@ function DefaultErrorFallback({
 
 // Utility Components for Suspense Boundaries
 
-interface AsyncErrorBoundaryProps extends Omit<EnhancedErrorBoundaryProps, 'children'> {
+interface AsyncErrorBoundaryProps extends Omit<EnhancedErrorBoundaryProps, 'children' | 'fallback'> {
   children: ReactNode;
   fallback?: ReactNode;
   suspenseFallback?: ReactNode;

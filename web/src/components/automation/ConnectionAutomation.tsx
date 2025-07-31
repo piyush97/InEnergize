@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Users,
   Plus,
-  Calendar,
   Clock,
   CheckCircle,
   XCircle,
@@ -29,8 +29,7 @@ import {
 import {
   ConnectionAutomationProps,
   ConnectionRequest,
-  ScheduleConnectionRequest,
-  MessageTemplate
+  ScheduleConnectionRequest
 } from "@/types/automation";
 
 interface TargetProfile {
@@ -46,7 +45,6 @@ interface TargetProfile {
 }
 
 export function ConnectionAutomation({
-  userId,
   templates,
   stats,
   onScheduleConnection,
@@ -322,9 +320,11 @@ export function ConnectionAutomation({
                         {targetProfiles.map(profile => (
                           <SelectItem key={profile.id} value={profile.id}>
                             <div className="flex items-center space-x-2">
-                              <img 
+                              <Image 
                                 src={profile.profilePicture || "/api/placeholder/24/24"} 
                                 alt={profile.name}
+                                width={24}
+                                height={24}
                                 className="w-6 h-6 rounded-full"
                               />
                               <div>
@@ -373,7 +373,7 @@ export function ConnectionAutomation({
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="priority">Priority</Label>
-                    <Select value={priority} onValueChange={(value: 'low' | 'medium' | 'high') => setPriority(value)}>
+                    <Select value={priority} onValueChange={(value) => setPriority(value as 'low' | 'medium' | 'high')}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -513,9 +513,11 @@ export function ConnectionAutomation({
                 {targetProfiles.map(profile => (
                   <div key={profile.id} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="flex items-center space-x-4">
-                      <img 
+                      <Image 
                         src={profile.profilePicture || "/api/placeholder/48/48"} 
                         alt={profile.name}
+                        width={48}
+                        height={48}
                         className="w-12 h-12 rounded-full"
                       />
                       <div>

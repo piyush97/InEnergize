@@ -102,7 +102,7 @@ const SchedulePage: NextPage = () => {
       <AppLayout className="bg-gray-50">
         <main className="min-h-screen">
           <SchedulingDashboard
-            userId={session?.user?.id || ''}
+            userId={(session?.user as any)?.id || session?.user?.email || ''}
             linkedinProfileId={linkedinProfileId || undefined}
             onContentScheduled={handleContentScheduled}
             onBulkSchedule={handleBulkSchedule}

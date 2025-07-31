@@ -1,0 +1,770 @@
+# InErgize Microservices Kubernetes Deployments
+# Production-ready deployments with auto-scaling and security
+
+---
+# Auth Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: inergize-production
+  labels:
+    app: auth-service
+    component: authentication
+    environment: production
+    version: "3.0.0"
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+        component: authentication
+        version: "3.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3001"
+        prometheus.io/path: "/metrics"
+        config.linkerd.io/skip-outbound-ports: "5432,6379"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      serviceAccountName: auth-service-sa
+      containers:
+        - name: auth-service
+          image: ghcr.io/inergize/auth-service:3.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3001
+              name: http
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3001"
+            - name: DATABASE_URL
+              value: "postgresql://inergize_user:$(POSTGRES_PASSWORD)@postgresql:5432/inergize_production?sslmode=require"
+            - name: REDIS_URL  
+              value: "rediss://:$(REDIS_PASSWORD)@redis:6380"
+            - name: JWT_ACCESS_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: jwt-access-secret
+            - name: JWT_REFRESH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: jwt-refresh-secret
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: encryption-key
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: postgres-password
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: redis-password
+            - name: LOG_LEVEL
+              value: "info"
+            - name: AUDIT_LOGGING
+              value: "true"
+            - name: RATE_LIMIT_ENABLED
+              value: "true"
+            - name: MFA_ENABLED
+              value: "true"
+            - name: SESSION_SECURITY
+              value: "strict"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3001
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: app-cache
+              mountPath: /app/.cache
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: app-cache
+          emptyDir:
+            sizeLimit: 100Mi
+
+---
+# LinkedIn Service Deployment (Critical Compliance)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: linkedin-service
+  namespace: inergize-production
+  labels:
+    app: linkedin-service
+    component: linkedin-integration
+    environment: production
+    compliance: critical
+    version: "3.0.0"
+  annotations:
+    compliance.inergize.com/classification: "restricted"
+    compliance.inergize.com/monitoring: "continuous"
+spec:
+  replicas: 2  # Limited replicas for compliance control
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0  # Zero downtime for compliance
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: linkedin-service
+  template:
+    metadata:
+      labels:
+        app: linkedin-service
+        component: linkedin-integration
+        compliance: critical
+        version: "3.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3003"
+        prometheus.io/path: "/metrics"
+        compliance.inergize.com/scan: "continuous"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      serviceAccountName: linkedin-service-sa
+      containers:
+        - name: linkedin-service
+          image: ghcr.io/inergize/linkedin-service:3.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3003
+              name: http
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3003"
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6380"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: redis-password
+            - name: REDIS_TLS
+              value: "true"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: jwt-access-secret
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-service:3001"
+            - name: LINKEDIN_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: linkedin-secrets
+                  key: client-id
+            - name: LINKEDIN_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: linkedin-secrets
+                  key: client-secret
+            - name: LINKEDIN_REDIRECT_URI
+              value: "https://app.inergize.com/auth/linkedin/callback"
+            # Ultra-conservative LinkedIn compliance settings
+            - name: LINKEDIN_RATE_LIMIT_STRICT
+              value: "true"
+            - name: LINKEDIN_COMPLIANCE_MODE
+              value: "ultra_conservative"
+            - name: LINKEDIN_HEALTH_THRESHOLD
+              value: "40"
+            - name: LINKEDIN_AUTO_SUSPEND
+              value: "true"
+            - name: LINKEDIN_DAILY_LIMIT
+              value: "15"
+            - name: LINKEDIN_HOURLY_LIMIT
+              value: "2"
+            - name: LINKEDIN_MINUTE_LIMIT
+              value: "1"
+            - name: LINKEDIN_MIN_DELAY
+              value: "45000"
+            - name: LINKEDIN_MAX_DELAY
+              value: "180000"
+            - name: LINKEDIN_WEEKEND_MODE
+              value: "reduced"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: AUDIT_LOGGING
+              value: "true"
+            - name: COMPLIANCE_LOGGING
+              value: "verbose"
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3003
+              scheme: HTTP
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3003
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: compliance-logs
+              mountPath: /app/logs
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 200Mi
+        - name: compliance-logs
+          emptyDir:
+            sizeLimit: 500Mi
+
+---
+# Analytics Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-service
+  namespace: inergize-production
+  labels:
+    app: analytics-service
+    component: analytics
+    environment: production
+    version: "3.0.0"
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: analytics-service
+  template:
+    metadata:
+      labels:
+        app: analytics-service
+        component: analytics
+        version: "3.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      serviceAccountName: analytics-service-sa
+      containers:
+        - name: analytics-service
+          image: ghcr.io/inergize/analytics-service:3.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3004
+              name: http
+              protocol: TCP
+            - containerPort: 3007
+              name: websocket
+              protocol: TCP
+            - containerPort: 9090
+              name: metrics
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3004"
+            - name: TIMESCALE_HOST
+              value: "timescaledb"
+            - name: TIMESCALE_PORT
+              value: "5432"
+            - name: TIMESCALE_USER
+              value: "timescale_user"
+            - name: TIMESCALE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: timescale-password
+            - name: TIMESCALE_DATABASE
+              value: "inergize_analytics"
+            - name: TIMESCALE_SSL
+              value: "true"
+            - name: REDIS_URL
+              value: "rediss://:$(REDIS_PASSWORD)@redis:6380"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: redis-password
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: jwt-access-secret
+            - name: WS_ENABLED
+              value: "true"
+            - name: WS_PORT
+              value: "3007"
+            - name: METRICS_ENABLED
+              value: "true"
+            - name: METRICS_PORT
+              value: "9090"
+            - name: DATA_RETENTION_DAYS
+              value: "90"
+            - name: ANONYMIZATION_AFTER_DAYS
+              value: "365"
+            - name: AUDIT_LOGGING
+              value: "true"
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3004
+              scheme: HTTP
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3004
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: analytics-cache
+              mountPath: /app/.cache
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 200Mi
+        - name: analytics-cache
+          emptyDir:
+            sizeLimit: 200Mi
+
+---
+# AI Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-service
+  namespace: inergize-production
+  labels:
+    app: ai-service
+    component: artificial-intelligence
+    environment: production
+    version: "3.0.0"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: ai-service
+  template:
+    metadata:
+      labels:
+        app: ai-service
+        component: artificial-intelligence
+        version: "3.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3005"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      serviceAccountName: ai-service-sa
+      containers:
+        - name: ai-service
+          image: ghcr.io/inergize/ai-service:3.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3005
+              name: http
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3005"
+            - name: REDIS_URL
+              value: "rediss://:$(REDIS_PASSWORD)@redis:6380"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: redis-password
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: jwt-access-secret
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-secrets
+                  key: openai-api-key
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-secrets
+                  key: anthropic-api-key
+            - name: OPENAI_MODEL
+              value: "gpt-4"
+            - name: OPENAI_MAX_TOKENS
+              value: "4000"
+            - name: OPENAI_TEMPERATURE
+              value: "0.7"
+            - name: RATE_LIMIT_PER_MINUTE
+              value: "10"
+            - name: RATE_LIMIT_PER_HOUR
+              value: "100"
+            - name: RATE_LIMIT_PER_DAY
+              value: "500"
+            - name: CONTENT_MODERATION
+              value: "true"
+            - name: PII_DETECTION
+              value: "true"
+            - name: AUDIT_LOGGING
+              value: "true"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3005
+              scheme: HTTP
+            initialDelaySeconds: 45
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3005
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: ai-cache
+              mountPath: /app/.cache
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: ai-cache
+          emptyDir:
+            sizeLimit: 100Mi
+
+---
+# User Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: inergize-production
+  labels:
+    app: user-service
+    component: user-management
+    environment: production
+    version: "3.0.0"
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+        component: user-management
+        version: "3.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3002"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      serviceAccountName: user-service-sa
+      containers:
+        - name: user-service
+          image: ghcr.io/inergize/user-service:3.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3002
+              name: http
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3002"
+            - name: DATABASE_URL
+              value: "postgresql://inergize_user:$(POSTGRES_PASSWORD)@postgresql:5432/inergize_production?sslmode=require"
+            - name: REDIS_URL
+              value: "rediss://:$(REDIS_PASSWORD)@redis:6380"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: postgres-password
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: redis-password
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: jwt-access-secret
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: encryption-key
+            - name: DATA_RETENTION_DAYS
+              value: "730"
+            - name: PII_ENCRYPTION
+              value: "true"
+            - name: AUDIT_LOGGING
+              value: "true"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3002
+              scheme: HTTP
+            initialDelaySeconds: 45
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3002
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: user-cache
+              mountPath: /app/.cache
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: user-cache
+          emptyDir:
+            sizeLimit: 100Mi
+
+---
+# Service Account for Auth Service
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: auth-service-sa
+  namespace: inergize-production
+  labels:
+    app: auth-service
+    component: authentication
+automountServiceAccountToken: false
+
+---
+# Service Account for LinkedIn Service
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: linkedin-service-sa
+  namespace: inergize-production
+  labels:
+    app: linkedin-service
+    component: linkedin-integration
+    compliance: critical
+  annotations:
+    compliance.inergize.com/monitoring: "strict"
+automountServiceAccountToken: false
+
+---
+# Service Account for Analytics Service
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: analytics-service-sa
+  namespace: inergize-production
+  labels:
+    app: analytics-service
+    component: analytics
+automountServiceAccountToken: false
+
+---
+# Service Account for AI Service
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ai-service-sa
+  namespace: inergize-production
+  labels:
+    app: ai-service
+    component: artificial-intelligence
+automountServiceAccountToken: false
+
+---
+# Service Account for User Service
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: user-service-sa
+  namespace: inergize-production
+  labels:
+    app: user-service
+    component: user-management
+automountServiceAccountToken: false

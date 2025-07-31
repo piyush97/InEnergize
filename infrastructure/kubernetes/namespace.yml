@@ -1,0 +1,141 @@
+# Production Kubernetes Namespace Configuration
+# Secure namespace with resource quotas and security policies
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: inergize-production
+  labels:
+    environment: production
+    app.kubernetes.io/name: inergize
+    app.kubernetes.io/version: "3.0.0"
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+  annotations:
+    # Security policies
+    security.alpha.kubernetes.io/sysctls: "net.core.somaxconn=65535"
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: "runtime/default"
+    # Compliance tracking
+    compliance.inergize.com/linkedin-safe: "true"
+    compliance.inergize.com/data-classification: "confidential"
+    # Cost management
+    cost-center: "engineering"
+    billing-group: "saas-platform"
+
+---
+# Resource Quota for Production Namespace  
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: inergize-production-quota
+  namespace: inergize-production
+  labels:
+    environment: production
+spec:
+  hard:
+    # Compute resources
+    requests.cpu: "20"        # 20 CPU cores
+    requests.memory: "40Gi"   # 40GB RAM
+    limits.cpu: "40"          # 40 CPU cores burst
+    limits.memory: "80Gi"     # 80GB RAM burst
+    
+    # Storage resources
+    requests.storage: "500Gi" # 500GB persistent storage
+    persistentvolumeclaims: "20"
+    
+    # Object counts
+    pods: "100"
+    services: "20"
+    secrets: "50"
+    configmaps: "50"
+    
+    # Security limits
+    count/secrets: "50"
+    count/serviceaccounts: "10"
+
+---
+# Network Policy for Production Security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: inergize-production-network-policy
+  namespace: inergize-production
+  labels:
+    environment: production
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow ingress from Kong Gateway
+    - from:
+        - podSelector:
+            matchLabels:
+              app: kong-gateway
+      ports:
+        - protocol: TCP
+          port: 3001  # Auth service
+        - protocol: TCP
+          port: 3002  # User service
+        - protocol: TCP
+          port: 3003  # LinkedIn service
+        - protocol: TCP
+          port: 3004  # Analytics service
+        - protocol: TCP
+          port: 3005  # AI service
+        - protocol: TCP
+          port: 3007  # WebSocket service
+    
+    # Allow monitoring ingress
+    - from:
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 9090  # Metrics port
+          
+    # Allow internal service communication
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: inergize-production
+              
+  egress:
+    # Allow database connections
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    
+    # Allow Redis connections  
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 6380  # TLS port
+    
+    # Allow external API calls (LinkedIn, OpenAI, etc.)
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443   # HTTPS
+        - protocol: TCP
+          port: 80    # HTTP
+    
+    # Allow DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
+import Image from 'next/image'
 import axios from 'axios'
 import { 
   PhotoIcon,
@@ -8,7 +9,7 @@ import {
   ArrowDownTrayIcon,
   TrashIcon,
   ShareIcon,
-  FilterIcon
+  FunnelIcon as FilterIcon
 } from '@heroicons/react/24/outline'
 import { toast } from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -73,9 +74,6 @@ export const BannerGallery: React.FC = () => {
     loadBanners()
   }, [])
 
-  useEffect(() => {
-    applyFilters()
-  }, [banners, searchQuery, filters, applyFilters])
 
   const loadBanners = async () => {
     try {
@@ -104,7 +102,7 @@ export const BannerGallery: React.FC = () => {
         banner.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         banner.industry.toLowerCase().includes(searchQuery.toLowerCase()) ||
         banner.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        banner.branding?.companyName?.toLowerCase().includes(searchQuery.toLowerCase())
+        (banner.branding as any)?.companyName?.toLowerCase().includes(searchQuery.toLowerCase())
       )
     }
 
@@ -148,6 +146,10 @@ export const BannerGallery: React.FC = () => {
     setCurrentPage(1)
   }, [banners, searchQuery, filters])
 
+  useEffect(() => {
+    applyFilters()
+  }, [banners, searchQuery, filters, applyFilters])
+
   const downloadBanner = async (banner: Banner) => {
     try {
       const link = document.createElement('a')
@@ -167,7 +169,7 @@ export const BannerGallery: React.FC = () => {
       )
       
       toast.success('Banner downloaded!')
-    } catch (_error) {
+    } catch {
       toast.error('Failed to download banner')
     }
   }
@@ -184,7 +186,7 @@ export const BannerGallery: React.FC = () => {
         return newSet
       })
       toast.success('Banner deleted!')
-    } catch (_error) {
+    } catch {
       toast.error('Failed to delete banner')
     }
   }
@@ -214,7 +216,7 @@ export const BannerGallery: React.FC = () => {
       setBanners(prev => prev.filter(b => !selectedBanners.has(b.id)))
       setSelectedBanners(new Set())
       toast.success(`Deleted ${selectedBanners.size} banners!`)
-    } catch (_error) {
+    } catch {
       toast.error('Failed to delete some banners')
     }
   }
@@ -424,9 +426,11 @@ export const BannerGallery: React.FC = () => {
 
               {/* Banner Image */}
               <div className={`relative ${viewMode === 'list' ? 'w-48 flex-shrink-0' : ''}`}>
-                <img
+                <Image
                   src={banner.imageUrl}
                   alt={banner.altTexts[0] || 'LinkedIn banner'}
+                  width={1584}
+                  height={396}
                   className="w-full h-auto"
                   style={{ aspectRatio: '1584/396' }}
                 />
@@ -458,8 +462,8 @@ export const BannerGallery: React.FC = () => {
                   )}
                 </div>
 
-                {banner.branding?.companyName && (
-                  <p className="text-sm text-gray-700 mb-2">{banner.branding.companyName}</p>
+                {(banner.branding as any)?.companyName && (
+                  <p className="text-sm text-gray-700 mb-2">{(banner.branding as any)?.companyName}</p>
                 )}
 
                 <div className="flex items-center justify-between text-xs text-gray-500 mb-3">

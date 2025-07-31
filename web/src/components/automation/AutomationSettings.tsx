@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -25,11 +25,8 @@ import {
   MessageSquare,
   Eye,
   UserPlus,
-  Calendar,
-  Zap,
   Bell,
-  Lock,
-  Globe
+  Lock
 } from "lucide-react";
 
 import {
@@ -37,14 +34,7 @@ import {
   AutomationSettings as AutomationSettingsType
 } from "@/types/automation";
 
-interface SettingsSection {
-  title: string;
-  description: string;
-  isDirty: boolean;
-}
-
 export function AutomationSettings({
-  userId,
   settings,
   onUpdateSettings
 }: AutomationSettingsProps) {

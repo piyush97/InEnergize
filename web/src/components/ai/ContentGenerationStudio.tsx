@@ -395,8 +395,8 @@ const ContentGenerationStudio: React.FC<ContentGenerationStudioProps> = ({ class
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div>
                         <label className="text-sm font-medium">Model</label>
-                        <Select value={settings.model} onValueChange={(value: 'gpt-4' | 'gpt-3.5-turbo' | 'claude' | 'custom') => 
-                          setSettings(prev => ({ ...prev, model: value }))
+                        <Select value={settings.model} onValueChange={(value) => 
+                          setSettings(prev => ({ ...prev, model: value as 'gpt-4' | 'gpt-3.5-turbo' | 'claude' | 'custom' }))
                         }>
                           <SelectTrigger>
                             <SelectValue />
@@ -411,8 +411,8 @@ const ContentGenerationStudio: React.FC<ContentGenerationStudioProps> = ({ class
                       
                       <div>
                         <label className="text-sm font-medium">Tone</label>
-                        <Select value={settings.tone} onValueChange={(value: 'professional' | 'casual' | 'authoritative' | 'friendly' | 'humorous' | 'inspirational') => 
-                          setSettings(prev => ({ ...prev, tone: value }))
+                        <Select value={settings.tone} onValueChange={(value) => 
+                          setSettings(prev => ({ ...prev, tone: value as 'professional' | 'casual' | 'authoritative' | 'friendly' | 'humorous' | 'inspirational' }))
                         }>
                           <SelectTrigger>
                             <SelectValue />
@@ -429,8 +429,8 @@ const ContentGenerationStudio: React.FC<ContentGenerationStudioProps> = ({ class
                       
                       <div>
                         <label className="text-sm font-medium">Length</label>
-                        <Select value={settings.length} onValueChange={(value: 'short' | 'medium' | 'long') => 
-                          setSettings(prev => ({ ...prev, length: value }))
+                        <Select value={settings.length} onValueChange={(value) => 
+                          setSettings(prev => ({ ...prev, length: value as 'short' | 'medium' | 'long' }))
                         }>
                           <SelectTrigger>
                             <SelectValue />
@@ -445,8 +445,8 @@ const ContentGenerationStudio: React.FC<ContentGenerationStudioProps> = ({ class
                       
                       <div>
                         <label className="text-sm font-medium">Audience</label>
-                        <Select value={settings.audience} onValueChange={(value: 'executives' | 'professionals' | 'students' | 'entrepreneurs' | 'general') => 
-                          setSettings(prev => ({ ...prev, audience: value }))
+                        <Select value={settings.audience} onValueChange={(value) => 
+                          setSettings(prev => ({ ...prev, audience: value as 'executives' | 'professionals' | 'students' | 'entrepreneurs' | 'general' }))
                         }>
                           <SelectTrigger>
                             <SelectValue />

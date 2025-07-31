@@ -1,0 +1,593 @@
+# Auto-scaling Configuration for InErgize Production
+# HPA, VPA, and custom scaling for automation workloads
+
+---
+# Horizontal Pod Autoscaler for Auth Service
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: auth-service-hpa
+  namespace: inergize-production
+  labels:
+    app: auth-service
+    component: autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: auth-service
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "100"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Min
+
+---
+# HPA for LinkedIn Service (Conservative scaling for compliance)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: linkedin-service-hpa
+  namespace: inergize-production
+  labels:
+    app: linkedin-service
+    component: autoscaling
+    compliance: critical
+  annotations:
+    compliance.inergize.com/scaling: "conservative"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: linkedin-service
+  minReplicas: 2
+  maxReplicas: 6  # Limited for compliance control
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60  # Lower threshold for stability
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Pods
+      pods:
+        metric:
+          name: linkedin_api_calls_per_minute
+        target:
+          type: AverageValue
+          averageValue: "30"  # Conservative API usage
+    - type: Pods
+      pods:
+        metric:
+          name: linkedin_compliance_score
+        target:
+          type: AverageValue
+          averageValue: "85"  # Maintain high compliance
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 300  # Slower scaling for compliance
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Min
+    scaleDown:
+      stabilizationWindowSeconds: 600  # Very conservative scale down
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 120
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+      selectPolicy: Min
+
+---
+# HPA for Analytics Service (High performance scaling)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: analytics-service-hpa
+  namespace: inergize-production
+  labels:
+    app: analytics-service
+    component: autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analytics-service
+  minReplicas: 3
+  maxReplicas: 15
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 85
+    - type: Pods
+      pods:
+        metric:
+          name: timescale_connections
+        target:
+          type: AverageValue
+          averageValue: "15"
+    - type: Pods
+      pods:
+        metric:
+          name: websocket_connections
+        target:
+          type: AverageValue
+          averageValue: "500"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 200
+          periodSeconds: 30
+        - type: Pods
+          value: 3
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 180
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 60
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Min
+
+---
+# HPA for AI Service (Burst scaling for AI workloads)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ai-service-hpa
+  namespace: inergize-production
+  labels:
+    app: ai-service
+    component: autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ai-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+    - type: Pods
+      pods:
+        metric:
+          name: openai_requests_queued
+        target:
+          type: AverageValue
+          averageValue: "5"
+    - type: Pods
+      pods:
+        metric:
+          name: ai_generation_latency_seconds
+        target:
+          type: AverageValue
+          averageValue: "10"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 45
+      policies:
+        - type: Percent
+          value: 150
+          periodSeconds: 30
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 33
+          periodSeconds: 90
+        - type: Pods
+          value: 1
+          periodSeconds: 90
+      selectPolicy: Min
+
+---
+# HPA for User Service
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: user-service-hpa
+  namespace: inergize-production
+  labels:
+    app: user-service
+    component: autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: user-service
+  minReplicas: 3
+  maxReplicas: 12
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Pods
+      pods:
+        metric:
+          name: database_connections
+        target:
+          type: AverageValue
+          averageValue: "10"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Min
+
+---
+# Vertical Pod Autoscaler for PostgreSQL
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: postgresql-vpa
+  namespace: inergize-production
+  labels:
+    app: postgresql
+    component: autoscaling
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: postgresql
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: postgresql
+        minAllowed:
+          cpu: 1000m
+          memory: 2Gi
+        maxAllowed:
+          cpu: 4000m
+          memory: 8Gi
+        controlledResources:
+          - cpu
+          - memory
+        controlledValues: RequestsAndLimits
+
+---
+# VPA for TimescaleDB
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: timescaledb-vpa
+  namespace: inergize-production
+  labels:
+    app: timescaledb
+    component: autoscaling
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: timescaledb
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: timescaledb
+        minAllowed:
+          cpu: 2000m
+          memory: 4Gi
+        maxAllowed:
+          cpu: 8000m
+          memory: 16Gi
+        controlledResources:
+          - cpu
+          - memory
+        controlledValues: RequestsAndLimits
+
+---
+# VPA for Redis Cluster
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: redis-vpa
+  namespace: inergize-production
+  labels:
+    app: redis
+    component: autoscaling
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: redis
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: redis
+        minAllowed:
+          cpu: 500m
+          memory: 1Gi
+        maxAllowed:
+          cpu: 2000m
+          memory: 4Gi
+        controlledResources:
+          - cpu
+          - memory
+        controlledValues: RequestsAndLimits
+
+---
+# Custom Resource for LinkedIn Automation Scaling
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: linkedinautoscalers.autoscaling.inergize.com
+  labels:
+    app: linkedin-autoscaler
+    component: custom-scaling
+spec:
+  group: autoscaling.inergize.com
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                complianceThreshold:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                  default: 80
+                maxAPICallsPerHour:
+                  type: integer
+                  minimum: 1
+                  maximum: 50
+                  default: 30
+                emergencyStopEnabled:
+                  type: boolean
+                  default: true
+                healthScoreMinimum:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                  default: 40
+            status:
+              type: object
+              properties:
+                currentCompliance:
+                  type: integer
+                lastScaleTime:
+                  type: string
+                  format: date-time
+                emergencyStopActive:
+                  type: boolean
+  scope: Namespaced
+  names:
+    plural: linkedinautoscalers
+    singular: linkedinautoscaler
+    kind: LinkedInAutoscaler
+    shortNames:
+      - lias
+
+---
+# LinkedIn Automation Autoscaler Instance
+apiVersion: autoscaling.inergize.com/v1
+kind: LinkedInAutoscaler
+metadata:
+  name: linkedin-automation-scaler
+  namespace: inergize-production
+  labels:
+    app: linkedin-service
+    component: compliance-scaling
+spec:
+  complianceThreshold: 85
+  maxAPICallsPerHour: 25  # Ultra-conservative
+  emergencyStopEnabled: true
+  healthScoreMinimum: 50
+
+---
+# KEDA ScaledObject for Queue-based Scaling
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: linkedin-queue-scaler
+  namespace: inergize-production
+  labels:
+    app: linkedin-service
+    component: queue-scaling
+spec:
+  scaleTargetRef:
+    name: linkedin-service
+  minReplicaCount: 2
+  maxReplicaCount: 4  # Conservative for compliance
+  triggers:
+    - type: redis
+      metadata:
+        address: redis:6379
+        password: 
+          name: database-secrets
+          key: redis-password
+        listName: linkedin:connection:queue
+        listLength: "10"  # Scale up when queue has 10+ items
+        enableTLS: "true"
+    - type: redis
+      metadata:
+        address: redis:6379
+        password:
+          name: database-secrets
+          key: redis-password
+        listName: linkedin:engagement:queue
+        listLength: "5"   # More sensitive for engagement
+        enableTLS: "true"
+  cooldownPeriod: 300    # 5 minutes cooldown
+  pollingInterval: 30    # Check every 30 seconds
+
+---
+# KEDA ScaledObject for AI Service Queue Scaling
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: ai-service-queue-scaler
+  namespace: inergize-production
+  labels:
+    app: ai-service
+    component: queue-scaling
+spec:
+  scaleTargetRef:
+    name: ai-service
+  minReplicaCount: 2
+  maxReplicaCount: 8
+  triggers:
+    - type: redis
+      metadata:
+        address: redis:6379
+        password:
+          name: database-secrets
+          key: redis-password
+        listName: ai:content:generation:queue
+        listLength: "20"
+        enableTLS: "true"
+    - type: redis
+      metadata:
+        address: redis:6379
+        password:
+          name: database-secrets
+          key: redis-password
+        listName: ai:banner:generation:queue
+        listLength: "10"
+        enableTLS: "true"
+  cooldownPeriod: 180
+  pollingInterval: 15
+
+---
+# Pod Disruption Budget for Auth Service
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: auth-service-pdb
+  namespace: inergize-production
+  labels:
+    app: auth-service
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: auth-service
+
+---
+# Pod Disruption Budget for LinkedIn Service (Strict)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: linkedin-service-pdb
+  namespace: inergize-production
+  labels:
+    app: linkedin-service
+    compliance: critical
+spec:
+  minAvailable: 1  # Always keep at least 1 running
+  selector:
+    matchLabels:
+      app: linkedin-service

@@ -166,16 +166,16 @@ export function SafetyMonitorWidget({
       }
     },
     {
-      label: "Error Rate",
-      value: Math.round(realtimeStatus.metrics.errorRate * 100),
-      limit: 3, // 3% error rate threshold
-      status: realtimeStatus.metrics.errorRate > 0.02 ? 'critical' :
-              realtimeStatus.metrics.errorRate > 0.01 ? 'warning' : 'safe',
-      trend: realtimeStatus.metrics.errorRate > 0.01 ? 'up' : 'stable',
+      label: "Success Rate",
+      value: Math.round(realtimeStatus.metrics.engagementSuccessRate),
+      limit: 100, // 100% success rate is ideal
+      status: realtimeStatus.metrics.engagementSuccessRate < 50 ? 'critical' :
+              realtimeStatus.metrics.engagementSuccessRate < 70 ? 'warning' : 'safe',
+      trend: realtimeStatus.metrics.engagementSuccessRate > 70 ? 'up' : 'stable',
       compliance: {
-        linkedinLimit: 100, // LinkedIn doesn't specify but we assume 100% = bad
-        ourLimit: 3,
-        safetyMargin: '97%'
+        linkedinLimit: 100,
+        ourLimit: 100,
+        safetyMargin: '0%'
       },
       unit: '%'
     }
