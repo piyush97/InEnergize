@@ -26,12 +26,12 @@ import {
 } from '@/components/ui/enhanced-skeleton';
 
 // Import existing components
-import { ProfileMetricsWidget } from './ProfileMetricsWidget';
-import { ProfileCompletenessChart } from './ProfileCompletenessChart';
-import { AnalyticsChart } from './AnalyticsChart';
-import { ProfileOptimizationSuggestions } from './ProfileOptimizationSuggestions';
-import { LiveActivityFeed } from './LiveActivityFeed';
-import { GoalsWidget } from './GoalsWidget';
+import ProfileMetricsWidget from './ProfileMetricsWidget';
+import ProfileCompletenessChart from './ProfileCompletenessChart';
+import AnalyticsChart from './AnalyticsChart';
+import ProfileOptimizationSuggestions from './ProfileOptimizationSuggestions';
+import LiveActivityFeed from './LiveActivityFeed';
+import GoalsWidget from './GoalsWidget';
 import { AutomationDashboard } from '../automation';
 
 // UI Components
@@ -198,9 +198,8 @@ export function EnhancedDashboardLayout({
   // Real-time metrics hook
   const { 
     metrics, 
-    connected: wsConnected, 
-    lastUpdate, 
-    error: wsError 
+    isConnected: wsConnected, 
+    lastError: wsError 
   } = useRealTimeMetrics();
 
   // ===== COMPUTED VALUES =====
@@ -705,8 +704,6 @@ export function EnhancedDashboardLayout({
                   >
                     <ProfileMetricsWidget 
                       className="w-full" 
-                      compactView={settings.compactView}
-                      showAdvancedMetrics={settings.showAdvancedMetrics}
                     />
                   </AsyncErrorBoundary>
 
@@ -729,8 +726,6 @@ export function EnhancedDashboardLayout({
                   >
                     <AnalyticsChart 
                       className="w-full" 
-                      selectedMetrics={settings.selectedMetrics}
-                      showPredictive={settings.showAdvancedMetrics}
                     />
                   </AsyncErrorBoundary>
 
@@ -867,12 +862,10 @@ export function EnhancedDashboardLayout({
           {/* Automation Tab */}
           <TabsContent value="automation">
             <EnhancedErrorBoundary level="section" title="Automation Dashboard">
-              <Suspense fallback={<InlineLoading context="automation" />}>
+              <Suspense fallback={<InlineLoading loading={true} context="processing" />}>
                 <AutomationDashboard
-                  userId={userId}
-                  subscriptionTier={subscriptionTier}
-                  compactView={settings.compactView}
-                  showAdvancedMetrics={settings.showAdvancedMetrics}
+                  userId={userId || 'default'}
+                  subscriptionTier={subscriptionTier === 'pro' ? 'premium' : subscriptionTier}
                 />
               </Suspense>
             </EnhancedErrorBoundary>
@@ -888,9 +881,6 @@ export function EnhancedDashboardLayout({
                 >
                   <AnalyticsChart 
                     className="w-full" 
-                    selectedMetrics={settings.selectedMetrics}
-                    showPredictive={true}
-                    showAdvancedControls={true}
                   />
                 </AsyncErrorBoundary>
                 

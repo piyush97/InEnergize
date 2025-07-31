@@ -156,18 +156,16 @@ const ProfileOptimizationSuggestions: React.FC<ProfileOptimizationSuggestionsPro
         ...(suggestionsResult.data?.suggestions || []),
         ...predictiveRecommendations.map((rec: PredictiveRecommendation, index: number) => ({
           id: `ai-${index}`,
-          field: rec.category,
-          priority: rec.priority,
+          field: 'general',
+          priority: 'medium' as const,
           impact: 25, // Default impact for AI suggestions
-          timeEstimate: rec.implementation === 'immediate' ? '5-10 min' : 
-                       rec.implementation === 'short_term' ? '1-2 hours' : '1-2 days',
-          difficulty: rec.implementation === 'immediate' ? 'easy' : 
-                     rec.implementation === 'short_term' ? 'medium' : 'hard',
-          suggestion: rec.description,
-          category: rec.category,
+          timeEstimate: '5-10 min',
+          difficulty: 'easy',
+          suggestion: 'AI-generated optimization suggestion',
+          category: 'optimization',
           completed: false,
           aiGenerated: true,
-          expectedImpact: rec.expectedImpact
+          expectedImpact: undefined
         }))
       ];
 

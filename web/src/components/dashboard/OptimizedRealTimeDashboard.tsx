@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useOptimizedWebSocket } from '@/hooks/useOptimizedWebSocket';
-import { OptimizedButton } from '@/design-system/components/OptimizedButton';
+import { Button } from '@/components/ui/button';
 import {
   Activity,
   Users,
@@ -411,15 +411,15 @@ export const OptimizedRealTimeDashboard = memo<OptimizedRealTimeDashboardProps>(
                 )}
               </div>
               
-              <OptimizedButton
+              <Button
                 variant="outline"
                 size="sm"
                 onClick={ws.reconnect}
                 disabled={ws.isConnecting}
-                leftIcon={<Clock className="h-4 w-4" />}
               >
+                <Clock className="h-4 w-4 mr-2" />
                 Refresh
-              </OptimizedButton>
+              </Button>
             </div>
           </div>
         </div>
