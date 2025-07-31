@@ -27,6 +27,12 @@ interface DialogDescriptionProps {
   className?: string
 }
 
+interface DialogTriggerProps {
+  children: React.ReactNode
+  className?: string
+  asChild?: boolean
+}
+
 const DialogContext = React.createContext<{
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -90,4 +96,25 @@ const DialogDescription: React.FC<DialogDescriptionProps> = ({ children, classNa
   )
 }
 
-export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription }
+const DialogTrigger: React.FC<DialogTriggerProps> = ({ children, className, asChild }) => {
+  const { onOpenChange } = React.useContext(DialogContext)
+  
+  const handleClick = () => {
+    onOpenChange?.(true)
+  }
+
+  if (asChild && React.isValidElement(children)) {
+    return React.cloneElement(children, {
+      onClick: handleClick,
+      className: cn(className, (children.props as any).className)
+    } as any)
+  }
+
+  return (
+    <button onClick={handleClick} className={className}>
+      {children}
+    </button>
+  )
+}
+
+export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger }
