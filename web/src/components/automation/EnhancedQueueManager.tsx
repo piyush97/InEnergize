@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
+  Activity,
   Clock,
   Users,
   Heart,
@@ -18,17 +19,14 @@ import {
   ArrowUp,
   ArrowDown,
   Play,
-  Pause,
   RotateCcw,
   Trash2,
   Filter,
   ChevronDown,
   ChevronRight,
-  AlertTriangle,
   CheckCircle,
   XCircle,
   Calendar,
-  MoreHorizontal,
   GripVertical,
   Zap
 } from "lucide-react";
@@ -36,7 +34,6 @@ import {
 import { QueueItem } from "@/types/automation";
 
 interface EnhancedQueueManagerProps {
-  userId: string;
   queueItems: QueueItem[];
   onUpdatePriority: (itemId: string, priority: 'low' | 'medium' | 'high') => Promise<void>;
   onCancelItem: (itemId: string) => Promise<void>;
@@ -46,7 +43,6 @@ interface EnhancedQueueManagerProps {
 }
 
 export function EnhancedQueueManager({
-  userId,
   queueItems,
   onUpdatePriority,
   onCancelItem,
@@ -79,8 +75,8 @@ export function EnhancedQueueManager({
 
     // Sort items
     filtered.sort((a, b) => {
-      let aValue: any;
-      let bValue: any;
+      let aValue: number | string;
+      let bValue: number | string;
 
       switch (sortBy) {
         case 'scheduledAt':
@@ -101,8 +97,8 @@ export function EnhancedQueueManager({
           bValue = b.status;
           break;
         default:
-          aValue = a[sortBy as keyof QueueItem];
-          bValue = b[sortBy as keyof QueueItem];
+          aValue = (a[sortBy as keyof QueueItem] as string | number) || '';
+          bValue = (b[sortBy as keyof QueueItem] as string | number) || '';
       }
 
       if (sortOrder === 'asc') {
@@ -619,7 +615,7 @@ export function EnhancedQueueManager({
                         <div>
                           <div className="font-medium text-gray-700">Created</div>
                           <div className="text-gray-600">
-                            {new Date(item.metadata?.createdAt || Date.now()).toLocaleString()}
+                            {new Date((item.metadata?.createdAt as number) || Date.now()).toLocaleString()}
                           </div>
                         </div>
                         <div>

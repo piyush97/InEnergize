@@ -112,7 +112,7 @@ export const OptimizedButton = memo(
             rel={external ? 'noopener noreferrer' : undefined}
             aria-disabled={isDisabled}
             onClick={isDisabled ? (e) => e.preventDefault() : undefined}
-            {...(props as any)}
+            {...(props as React.AnchorHTMLAttributes<HTMLAnchorElement>)}
           >
             {content}
           </a>

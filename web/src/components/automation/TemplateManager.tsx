@@ -11,7 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { 
   Plus,
   Edit,
@@ -29,7 +28,6 @@ import {
   Eye,
   BarChart3,
   FileText,
-  MoreVertical,
   Sparkles
 } from "lucide-react";
 
@@ -75,8 +73,7 @@ export function TemplateManager({
   templates,
   onCreateTemplate,
   onUpdateTemplate,
-  onDeleteTemplate,
-  onAnalyzeTemplate
+  onDeleteTemplate
 }: TemplateManagerProps) {
   const [activeTab, setActiveTab] = useState<'connection' | 'comment' | 'analytics'>('connection');
   const [searchQuery, setSearchQuery] = useState('');
@@ -114,7 +111,11 @@ export function TemplateManager({
     try {
       setLoading(true);
       setError(null);
-      await onCreateTemplate(formData);
+      await onCreateTemplate({
+        ...formData,
+        usageCount: 0,
+        isDefault: false
+      });
       setIsCreateDialogOpen(false);
       resetForm();
     } catch (err) {
@@ -149,9 +150,9 @@ export function TemplateManager({
       content: template.content,
       type: template.type,
       variables: template.variables || [],
-      tags: template.tags || [],
-      isActive: template.isActive,
-      description: template.description || '',
+      tags: [],
+      isActive: template.isDefault,
+      description: '',
       id: template.id
     });
     setIsEditDialogOpen(true);
@@ -181,16 +182,6 @@ export function TemplateManager({
     }
   };
 
-  const handleAnalyzeTemplate = async (template: MessageTemplate) => {
-    try {
-      setLoading(true);
-      await onAnalyzeTemplate(template.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to analyze template');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleVariableToggle = (variable: string) => {
     setFormData(prev => ({
@@ -280,35 +271,30 @@ export function TemplateManager({
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-medium">{template.name}</h3>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem onClick={() => handleEditTemplate(template)}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleDuplicateTemplate(template)}>
-                          <Copy className="h-4 w-4 mr-2" />
-                          Duplicate
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleAnalyzeTemplate(template)}>
-                          <BarChart3 className="h-4 w-4 mr-2" />
-                          Analyze
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem 
-                          onClick={() => handleDeleteTemplate(template.id)}
-                          className="text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="flex items-center space-x-1">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleEditTemplate(template)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleDuplicateTemplate(template)}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleDeleteTemplate(template.id)}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                   <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{template.content}</p>
                   <div className="flex items-center justify-between">
@@ -437,7 +423,7 @@ const TemplateFormDialog = ({
 
         <div className="space-y-2">
           <Label htmlFor="type">Template Type</Label>
-          <Select value={formData.type} onValueChange={(value: 'connection' | 'comment' | 'follow_up') => setFormData(prev => ({ ...prev, type: value }))}>
+          <Select value={formData.type} onValueChange={(value) => setFormData(prev => ({ ...prev, type: value as 'connection' | 'comment' | 'follow_up' }))}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>

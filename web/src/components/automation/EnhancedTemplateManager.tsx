@@ -4,13 +4,12 @@ import React, { useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { 
   FileText,
   Plus,
@@ -47,7 +46,7 @@ interface EnhancedTemplateManagerProps {
   onCreateTemplate: (template: Omit<MessageTemplate, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   onUpdateTemplate: (templateId: string, updates: Partial<MessageTemplate>) => Promise<void>;
   onDeleteTemplate: (templateId: string) => Promise<void>;
-  onAnalyzeTemplate: (templateId: string) => Promise<any>;
+  onAnalyzeTemplate: (templateId: string) => Promise<{ success: boolean; data?: unknown; error?: string }>;
   subscriptionTier: 'free' | 'premium' | 'enterprise';
 }
 
@@ -164,11 +163,13 @@ export function EnhancedTemplateManager({
     
     setAnalyzing(templateId);
     try {
-      const analysis = await onAnalyzeTemplate(templateId);
-      setTemplateAnalysis(prev => ({
-        ...prev,
-        [templateId]: analysis
-      }));
+      const result = await onAnalyzeTemplate(templateId);
+      if (result.success && result.data) {
+        setTemplateAnalysis(prev => ({
+          ...prev,
+          [templateId]: result.data as TemplateAnalysis
+        }));
+      }
     } catch (error) {
       console.error('Template analysis failed:', error);
     } finally {
@@ -345,13 +346,12 @@ export function EnhancedTemplateManager({
               </CardDescription>
             </div>
             
+            <Button onClick={() => setCreatingTemplate(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Create Template
+            </Button>
+            
             <Dialog open={creatingTemplate} onOpenChange={setCreatingTemplate}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Template
-                </Button>
-              </DialogTrigger>
               <DialogContent className="max-w-2xl">
                 <DialogHeader>
                   <DialogTitle>Create New Template</DialogTitle>
@@ -374,7 +374,7 @@ export function EnhancedTemplateManager({
                     <Label htmlFor="template-type">Template Type</Label>
                     <Select
                       value={newTemplate.type}
-                      onValueChange={(value) => setNewTemplate(prev => ({ ...prev, type: value as any }))}
+                      onValueChange={(value) => setNewTemplate(prev => ({ ...prev, type: value as 'connection' | 'comment' | 'follow_up' }))}
                     >
                       <SelectTrigger>
                         <SelectValue />

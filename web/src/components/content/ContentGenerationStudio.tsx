@@ -526,15 +526,17 @@ export const ContentGenerationStudio: React.FC = () => {
                         </div>
 
                         {/* Character Count */}
-                        <div className="flex items-center gap-2">
-                          <Progress 
-                            value={(variant.characterCount / CONTENT_TYPES[request.contentType].charLimit) * 100} 
-                            className="flex-1"
-                          />
-                          <span className="text-sm text-gray-500">
-                            {variant.characterCount} / {CONTENT_TYPES[request.contentType].charLimit}
-                          </span>
-                        </div>
+                        {'charLimit' in CONTENT_TYPES[request.contentType] && (
+                          <div className="flex items-center gap-2">
+                            <Progress 
+                              value={(variant.characterCount / (CONTENT_TYPES[request.contentType] as any).charLimit) * 100} 
+                              className="flex-1"
+                            />
+                            <span className="text-sm text-gray-500">
+                              {variant.characterCount} / {(CONTENT_TYPES[request.contentType] as any).charLimit}
+                            </span>
+                          </div>
+                        )}
 
                         {/* Hashtags */}
                         {variant.hashtags.length > 0 && (

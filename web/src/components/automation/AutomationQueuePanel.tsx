@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -11,29 +11,16 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { 
   Clock,
-  Play,
-  Pause,
-  X,
   RotateCcw,
-  ArrowUp,
-  ArrowDown,
-  Users,
-  Heart,
-  MessageSquare,
-  Eye,
-  UserPlus,
-  Filter,
   Search,
   AlertTriangle,
   CheckCircle,
-  XCircle,
-  Timer,
-  Zap,
   GripVertical,
   Loader2,
   Circle,
-  BarChart3,
-  Activity
+  Activity,
+  XCircle,
+  X
 } from "lucide-react";
 
 import {
@@ -41,33 +28,23 @@ import {
   QueueItem
 } from "@/types/automation";
 
-interface QueueStats {
-  total: number;
-  pending: number;
-  processing: number;
-  completed: number;
-  failed: number;
-  estimatedTimeRemaining: number; // in minutes
-}
-
 export function AutomationQueuePanel({
   userId,
-  queueItems,
-  onUpdatePriority,
+  items: queueItems,
+  onReorderItems: onUpdatePriority,
   onCancelItem,
-  onRetryItem,
-  onBulkAction
+  onRetryItem
 }: AutomationQueuePanelProps) {
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
   const [dragOverItem, setDragOverItem] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'processing' | 'completed' | 'failed'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'>('all');
   const [filterType, setFilterType] = useState<'all' | 'connection' | 'engagement'>('all');
   const [filterPriority, setFilterPriority] = useState<'all' | 'low' | 'medium' | 'high' | 'urgent'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h' | '7d'>('24h');
+  const [timeRange] = useState<'1h' | '6h' | '24h' | '7d'>('24h');
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   // WebSocket connection for real-time queue updates
@@ -106,7 +83,8 @@ export function AutomationQueuePanel({
       const matchesSearch = !searchQuery || 
         item.targetId.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (item.content && item.content.toLowerCase().includes(searchQuery.toLowerCase()));
+        (item.targetName && item.targetName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        item.action.toLowerCase().includes(searchQuery.toLowerCase());
       
       const matchesStatus = filterStatus === 'all' || item.status === filterStatus;
       const matchesType = filterType === 'all' || item.type === filterType;
@@ -177,9 +155,12 @@ export function AutomationQueuePanel({
       
       if (draggedIndex === -1 || targetIndex === -1) return;
 
-      const newPriority = targetIndex < draggedIndex ? 'high' : 'medium';
+      // Create reordered array and pass item IDs to onReorderItems  
+      const reorderedItems = [...queueItems];
+      const [draggedElement] = reorderedItems.splice(draggedIndex, 1);
+      reorderedItems.splice(targetIndex, 0, draggedElement);
       
-      await onUpdatePriority(draggedItem, newPriority);
+      await onUpdatePriority(reorderedItems.map(item => item.id));
       
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update priority');
@@ -217,7 +198,8 @@ export function AutomationQueuePanel({
 
     try {
       setLoading(true);
-      await onBulkAction('cancel', selectedItems);
+      // Bulk cancel - call onCancelItem for each selected item
+      await Promise.all(selectedItems.map(itemId => onCancelItem(itemId)));
       setSelectedItems([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to cancel selected items');
@@ -250,6 +232,8 @@ export function AutomationQueuePanel({
         return <CheckCircle className="h-4 w-4 text-green-500" />;
       case 'failed':
         return <XCircle className="h-4 w-4 text-red-500" />;
+      case 'cancelled':
+        return <X className="h-4 w-4 text-gray-500" />;
       default:
         return <Circle className="h-4 w-4 text-gray-400" />;
     }
@@ -260,7 +244,8 @@ export function AutomationQueuePanel({
       pending: { variant: "secondary" as const, label: "Pending", className: "bg-yellow-100 text-yellow-800" },
       processing: { variant: "default" as const, label: "Processing", className: "bg-blue-100 text-blue-800" },
       completed: { variant: "default" as const, label: "Completed", className: "bg-green-100 text-green-800" },
-      failed: { variant: "destructive" as const, label: "Failed", className: "bg-red-100 text-red-800" }
+      failed: { variant: "destructive" as const, label: "Failed", className: "bg-red-100 text-red-800" },
+      cancelled: { variant: "secondary" as const, label: "Cancelled", className: "bg-gray-100 text-gray-800" }
     };
     
     const statusConfig = config[status];
@@ -370,7 +355,7 @@ export function AutomationQueuePanel({
 
           {/* Filters */}
           <div className="flex gap-2">
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as typeof filterStatus)}>
               <SelectTrigger className="w-32">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -380,10 +365,11 @@ export function AutomationQueuePanel({
                 <SelectItem value="processing">Processing</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
 
-            <Select value={filterType} onValueChange={setFilterType}>
+            <Select value={filterType} onValueChange={(value) => setFilterType(value as typeof filterType)}>
               <SelectTrigger className="w-32">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
@@ -394,7 +380,7 @@ export function AutomationQueuePanel({
               </SelectContent>
             </Select>
 
-            <Select value={filterPriority} onValueChange={setFilterPriority}>
+            <Select value={filterPriority} onValueChange={(value) => setFilterPriority(value as typeof filterPriority)}>
               <SelectTrigger className="w-32">
                 <SelectValue placeholder="Priority" />
               </SelectTrigger>
@@ -500,23 +486,21 @@ export function AutomationQueuePanel({
 
                     <div className="text-sm text-gray-600 mb-2">
                       Target: <span className="font-medium">{item.targetId}</span>
-                      {item.content && (
+                      {item.metadata && (
                         <span className="ml-2">
-                          Content: <span className="italic">"{item.content.substring(0, 50)}..."</span>
+                          Action: <span className="italic">{item.action}</span>
                         </span>
                       )}
                     </div>
 
-                    {item.processedAt && (
-                      <div className="text-xs text-gray-500">
-                        Processed: {formatTime(item.processedAt)}
-                        {item.error && (
-                          <span className="ml-2 text-red-600">
-                            Error: {item.error}
-                          </span>
-                        )}
-                      </div>
-                    )}
+                    <div className="text-xs text-gray-500">
+                      Scheduled: {formatTime(item.scheduledAt)}
+                      {item.lastError && (
+                        <span className="ml-2 text-red-600">
+                          Error: {item.lastError}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center space-x-2">

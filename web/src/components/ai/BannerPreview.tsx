@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import Image from 'next/image'
 import { 
   CheckCircleIcon, 
   ExclamationTriangleIcon,
@@ -60,9 +61,11 @@ export const BannerPreview: React.FC<BannerPreviewProps> = ({
     <div className={`bg-white rounded-lg shadow-lg overflow-hidden ${className}`}>
       {/* Banner Image Container */}
       <div className="relative bg-gray-100">
-        <img
+        <Image
           src={banner.imageUrl}
           alt={banner.altTexts[0] || 'Generated LinkedIn banner'}
+          width={1584}
+          height={396}
           className="w-full h-auto"
           style={{ aspectRatio: '1584/396' }}
         />

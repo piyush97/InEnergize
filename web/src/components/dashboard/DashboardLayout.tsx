@@ -551,7 +551,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ className }) => {
               <ErrorBoundary>
                 <AutomationDashboard 
                   userId="current-user" // TODO: Get from auth context
-                  subscriptionTier="PRO" // TODO: Get from user context
+                  subscriptionTier="premium" // TODO: Get from user context
                 />
               </ErrorBoundary>
             </TabsContent>

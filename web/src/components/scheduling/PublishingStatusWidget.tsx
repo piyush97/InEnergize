@@ -18,7 +18,6 @@ import {
   Pause,
   Play,
   Shield,
-  TrendingUp,
   Users,
   Calendar,
   RefreshCw,

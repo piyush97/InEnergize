@@ -44,7 +44,8 @@ import {
   Cpu,
   Network,
   Wifi,
-  WifiOff
+  WifiOff,
+  FileText
 } from "lucide-react";
 
 import { useAutomation } from "@/contexts/AutomationContext";
@@ -239,11 +240,11 @@ export default function ProductionAutomationDashboard({
   const { isConnected, healthScore } = useWebSocket();
   
   // Real-time event handlers
-  useWebSocketEvent('automation_status', useCallback((data) => {
+  useWebSocketEvent('automation_status', useCallback((data: unknown) => {
     console.log('📊 Automation status update:', data);
   }, []));
   
-  useWebSocketEvent('safety_alert', useCallback((data) => {
+  useWebSocketEvent('safety_alert', useCallback((data: unknown) => {
     console.warn('🚨 Safety alert received:', data);
     // Could trigger toast notifications here
   }, []));
@@ -309,7 +310,7 @@ export default function ProductionAutomationDashboard({
       responseTime: safetyStatus.metrics.averageResponseTime,
       
       queueLength: queueItems?.length || 0,
-      activeTemplates: templates?.filter(t => t.isActive).length || 0,
+      activeTemplates: templates?.filter(t => t.isDefault || t.usageCount > 0).length || 0,
     };
   }, [overview, safetyStatus, queueItems, templates]);
 
@@ -480,7 +481,7 @@ export default function ProductionAutomationDashboard({
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-4" role="tabpanel">
+        <TabsContent value="overview" className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
@@ -493,22 +494,22 @@ export default function ProductionAutomationDashboard({
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Automation Status</span>
-                    <Badge variant={overview?.isActive ? "success" : "secondary"}>
-                      {overview?.isActive ? "Active" : "Paused"}
+                    <Badge variant={overview?.automation?.enabled ? "default" : "secondary"} className={overview?.automation?.enabled ? "bg-green-500 hover:bg-green-600 text-white" : ""}>
+                      {overview?.automation?.enabled ? "Active" : "Paused"}
                     </Badge>
                   </div>
                   
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Safety Score</span>
                     <span className={`font-bold ${
-                      safetyStatus?.score >= 85 ? 'text-green-600' : 
-                      safetyStatus?.score >= 70 ? 'text-yellow-600' : 'text-red-600'
+                      (safetyStatus?.score ?? 0) >= 85 ? 'text-green-600' : 
+                      (safetyStatus?.score ?? 0) >= 70 ? 'text-yellow-600' : 'text-red-600'
                     }`}>
-                      {safetyStatus?.score}/100
+                      {safetyStatus?.score ?? 0}/100
                     </span>
                   </div>
                   
-                  <Progress value={safetyStatus?.score} className="h-2" />
+                  <Progress value={safetyStatus?.score ?? 0} className="h-2" />
                 </div>
               </CardContent>
             </Card>
@@ -532,7 +533,7 @@ export default function ProductionAutomationDashboard({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Connection</span>
-                    <Badge variant={isConnected ? "success" : "destructive"}>
+                    <Badge variant={isConnected ? "default" : "destructive"} className={isConnected ? "bg-green-500 hover:bg-green-600 text-white" : ""}>
                       {isConnected ? "Connected" : "Disconnected"}
                     </Badge>
                   </div>
@@ -542,7 +543,7 @@ export default function ProductionAutomationDashboard({
           </div>
         </TabsContent>
 
-        <TabsContent value="safety" role="tabpanel">
+        <TabsContent value="safety">
           <Suspense fallback={
             <div className="flex items-center justify-center h-32">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -556,7 +557,7 @@ export default function ProductionAutomationDashboard({
           </Suspense>
         </TabsContent>
 
-        <TabsContent value="queue" role="tabpanel">
+        <TabsContent value="queue">
           <Suspense fallback={
             <div className="flex items-center justify-center h-32">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -564,13 +565,17 @@ export default function ProductionAutomationDashboard({
             </div>
           }>
             <LazyQueueManager 
-              userId={userId}
+              queueItems={queueItems || []}
+              onUpdatePriority={async () => {}}
+              onCancelItem={async () => {}}
+              onRetryItem={async () => {}}
+              onBulkAction={async () => {}}
               subscriptionTier={subscriptionTier}
             />
           </Suspense>
         </TabsContent>
 
-        <TabsContent value="templates" role="tabpanel">
+        <TabsContent value="templates">
           <Suspense fallback={
             <div className="flex items-center justify-center h-32">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -579,6 +584,11 @@ export default function ProductionAutomationDashboard({
           }>
             <LazyTemplateManager 
               userId={userId}
+              templates={templates || []}
+              onCreateTemplate={async () => {}}
+              onUpdateTemplate={async () => {}}
+              onDeleteTemplate={async () => {}}
+              onAnalyzeTemplate={async () => ({ success: false })}
               subscriptionTier={subscriptionTier}
             />
           </Suspense>
@@ -592,7 +602,7 @@ export default function ProductionAutomationDashboard({
             isOpen={isEmergencyStopVisible}
             onClose={() => setIsEmergencyStopVisible(false)}
             onConfirm={emergencyStop}
-            currentStatus={overview?.isActive ? 'active' : 'paused'}
+            currentStatus={overview?.automation?.enabled ? 'active' : 'paused'}
           />
         </Suspense>
       )}

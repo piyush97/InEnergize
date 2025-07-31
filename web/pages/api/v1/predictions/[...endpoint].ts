@@ -17,7 +17,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       headers: {
         'Content-Type': 'application/json',
         'Authorization': req.headers.authorization || '',
-        ...req.headers
+        ...(req.headers as Record<string, string>)
       },
       body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined
     });

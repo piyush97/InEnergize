@@ -20,6 +20,7 @@ import {
   Heart,
   MessageSquare,
   Users,
+  UserPlus,
   Activity,
   Zap,
   Target,
@@ -109,7 +110,7 @@ const AlertCard = memo(({
         <div className="flex items-start space-x-2">
           {getSeverityIcon(alert.severity)}
           <div className="flex-1">
-            <h4 className="font-medium text-gray-900">{alert.title}</h4>
+            <h4 className="font-medium text-gray-900">{alert.type.replace('_', ' ').toUpperCase()}</h4>
             <p className="text-sm text-gray-600 mt-1">{alert.message}</p>
             <p className="text-xs text-gray-500 mt-2">
               {new Date(alert.timestamp).toLocaleString()}
@@ -124,7 +125,7 @@ const AlertCard = memo(({
             onClick={handleAcknowledge}
             disabled={isAcknowledging}
             className="ml-4 flex-shrink-0"
-            aria-label={`Acknowledge ${alert.title} alert`}
+            aria-label={`Acknowledge ${alert.type.replace('_', ' ')} alert`}
           >
             {isAcknowledging ? (
               <RefreshCw className="h-3 w-3 animate-spin" />
@@ -237,10 +238,10 @@ export default function ProductionSafetyMonitor({
   const { isConnected } = useWebSocket();
   
   // Listen for safety alerts via WebSocket
-  useWebSocketEvent('safety_alert', useCallback((data) => {
+  useWebSocketEvent('safety_alert', useCallback((data: unknown) => {
     if (alertSounds && 'Notification' in window) {
       new Notification('LinkedIn Safety Alert', {
-        body: data.message,
+        body: (data as any)?.message || 'Safety alert received',
         icon: '/icon-192x192.png',
         tag: 'safety-alert'
       });
@@ -588,11 +589,11 @@ export default function ProductionSafetyMonitor({
                     className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                   >
                     <div>
-                      <p className="font-medium text-gray-900">{factor.type}</p>
+                      <p className="font-medium text-gray-900">{factor.category}</p>
                       <p className="text-sm text-gray-600">{factor.description}</p>
                     </div>
-                    <Badge variant={factor.severity === 'high' ? 'destructive' : factor.severity === 'medium' ? 'warning' : 'secondary'}>
-                      {factor.severity}
+                    <Badge variant={factor.score > 70 ? 'destructive' : factor.score > 40 ? 'secondary' : 'outline'}>
+                      Score: {factor.score}
                     </Badge>
                   </div>
                 ))}

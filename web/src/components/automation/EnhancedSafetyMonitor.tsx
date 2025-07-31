@@ -1,33 +1,43 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   Shield,
   AlertTriangle,
-  CheckCircle,
-  XCircle,
-  Clock,
   TrendingUp,
-  TrendingDown,
-  Pause,
-  Play,
-  Eye,
-  Heart,
-  MessageSquare,
   Users,
   Activity,
   Zap,
   Target,
   AlertOctagon,
-  Info
+  Info,
+  AlertCircle
 } from "lucide-react";
 
 import { SafetyStatus, SafetyAlert, RiskFactor } from "@/types/automation";
+
+// Define missing types
+interface ComplianceRule {
+  id: string;
+  title: string;
+  description: string;
+  status: 'compliant' | 'warning' | 'violation' | 'unknown';
+  progress: number;
+  current: number;
+  limit: number;
+  unit?: string;
+}
+
+interface SafetyInsight {
+  type: 'trend' | 'compliance' | 'performance';
+  title: string;
+  description: string;
+  severity: 'info' | 'warning' | 'critical';
+}
 
 interface EnhancedSafetyMonitorProps {
   userId: string;
@@ -38,20 +48,25 @@ interface EnhancedSafetyMonitorProps {
   subscriptionTier: 'free' | 'premium' | 'enterprise';
 }
 
-export default function EnhancedSafetyMonitor({ className }: EnhancedSafetyMonitorProps) {
-  const { 
-    safetyStatus, 
-    isConnected, 
-    connectionLatency,
-    acknowledgeAlert, 
-    emergencyStop,
-    isLoading, 
-    error 
-  } = useAutomation();
+export default function EnhancedSafetyMonitor({
+  userId,
+  status,
+  onEmergencyStop,
+  onResumeAutomation,
+  onAcknowledgeAlert,
+  subscriptionTier
+}: EnhancedSafetyMonitorProps) {
 
   const [alertsFilter, setAlertsFilter] = useState<'all' | 'critical' | 'warning' | 'info'>('all');
   const [isEmergencyStopConfirm, setIsEmergencyStopConfirm] = useState(false);
   const [healthHistory, setHealthHistory] = useState<Array<{timestamp: number, score: number}>>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Mock safety status and connection data since useAutomation is not available
+  const safetyStatus = status;
+  const isConnected = true;
+  const connectionLatency = 50;
 
   // Track health score history for trend analysis
   useEffect(() => {
@@ -93,7 +108,7 @@ export default function EnhancedSafetyMonitor({ className }: EnhancedSafetyMonit
 
     if (confirmed) {
       try {
-        await emergencyStop();
+        await onEmergencyStop();
         setIsEmergencyStopConfirm(false);
         
         // Show immediate feedback
@@ -111,7 +126,7 @@ export default function EnhancedSafetyMonitor({ className }: EnhancedSafetyMonit
     } else {
       setIsEmergencyStopConfirm(false);
     }
-  }, [emergencyStop, safetyStatus?.overallStatus, isEmergencyStopConfirm]);
+  }, [onEmergencyStop, safetyStatus?.overallStatus, isEmergencyStopConfirm]);
 
   // Real-time safety metrics with enhanced calculations
   const safetyMetrics = useMemo(() => {
@@ -122,7 +137,7 @@ export default function EnhancedSafetyMonitor({ className }: EnhancedSafetyMonit
     
     // Calculate risk factors
     const criticalAlerts = alerts.filter(a => a.severity === 'critical').length;
-    const warningAlerts = alerts.filter(a => a.severity === 'warning').length;
+    const warningAlerts = alerts.filter(a => a.severity === 'medium').length;
     
     // Enhanced compliance calculations
     const dailyLimits = {
@@ -319,7 +334,7 @@ export default function EnhancedSafetyMonitor({ className }: EnhancedSafetyMonit
             variant={safetyStatus?.overallStatus === 'critical' || isEmergencyStopConfirm ? 'destructive' : 'outline'}
             size="lg"
             onClick={handleEmergencyStop}
-            disabled={loading || safetyStatus?.overallStatus === 'suspended'}
+            disabled={isLoading || safetyStatus?.overallStatus === 'suspended'}
             className={`${
               safetyStatus?.overallStatus === 'critical' || isEmergencyStopConfirm
                 ? 'animate-pulse bg-red-600 hover:bg-red-700 text-white' 
@@ -327,7 +342,7 @@ export default function EnhancedSafetyMonitor({ className }: EnhancedSafetyMonit
             }`}
           >
             <AlertTriangle className="h-4 w-4 mr-2" />
-            {loading ? 'Stopping...' : 
+            {isLoading ? 'Stopping...' : 
              isEmergencyStopConfirm ? 'Confirm Stop!' : 
              'Emergency Stop'}
           </Button>
@@ -343,13 +358,12 @@ export default function EnhancedSafetyMonitor({ className }: EnhancedSafetyMonit
           </div>
           <Progress 
             value={safetyMetrics?.score || 0} 
-            className="h-3"
-            indicatorClassName={
-              (safetyMetrics?.score || 0) >= 80 ? 'bg-green-500' :
-              (safetyMetrics?.score || 0) >= 60 ? 'bg-yellow-500' :
-              (safetyMetrics?.score || 0) >= 40 ? 'bg-orange-500' :
-              'bg-red-500'
-            }
+            className={`h-3 ${
+              (safetyMetrics?.score || 0) >= 80 ? '[&>div]:bg-green-500' :
+              (safetyMetrics?.score || 0) >= 60 ? '[&>div]:bg-yellow-500' :
+              (safetyMetrics?.score || 0) >= 40 ? '[&>div]:bg-orange-500' :
+              '[&>div]:bg-red-500'
+            }`}
           />
         </div>
 
@@ -360,12 +374,11 @@ export default function EnhancedSafetyMonitor({ className }: EnhancedSafetyMonit
           </div>
           <Progress 
             value={safetyMetrics?.complianceScore || 0} 
-            className="h-3"
-            indicatorClassName={
-              (safetyMetrics?.complianceScore || 0) >= 80 ? 'bg-green-500' :
-              (safetyMetrics?.complianceScore || 0) >= 60 ? 'bg-yellow-500' :
-              'bg-red-500'
-            }
+            className={`h-3 ${
+              (safetyMetrics?.complianceScore || 0) >= 80 ? '[&>div]:bg-green-500' :
+              (safetyMetrics?.complianceScore || 0) >= 60 ? '[&>div]:bg-yellow-500' :
+              '[&>div]:bg-red-500'
+            }`}
           />
         </div>
 
@@ -376,12 +389,11 @@ export default function EnhancedSafetyMonitor({ className }: EnhancedSafetyMonit
           </div>
           <Progress 
             value={safetyMetrics?.connectionHealth || 0} 
-            className="h-3"
-            indicatorClassName={
-              (safetyMetrics?.connectionHealth || 0) >= 80 ? 'bg-green-500' :
-              (safetyMetrics?.connectionHealth || 0) >= 60 ? 'bg-yellow-500' :
-              'bg-red-500'
-            }
+            className={`h-3 ${
+              (safetyMetrics?.connectionHealth || 0) >= 80 ? '[&>div]:bg-green-500' :
+              (safetyMetrics?.connectionHealth || 0) >= 60 ? '[&>div]:bg-yellow-500' :
+              '[&>div]:bg-red-500'
+            }`}
           />
         </div>
       </div>
@@ -429,7 +441,7 @@ export default function EnhancedSafetyMonitor({ className }: EnhancedSafetyMonit
         </h3>
         <select
           value={alertsFilter}
-          onChange={(e) => setAlertsFilter(e.target.value as any)}
+          onChange={(e) => setAlertsFilter(e.target.value as 'all' | 'critical' | 'warning' | 'info')}
           className="px-3 py-1 border rounded-md text-sm"
         >
           <option value="all">All Alerts</option>
@@ -451,7 +463,7 @@ export default function EnhancedSafetyMonitor({ className }: EnhancedSafetyMonit
               key={index}
               className={`p-4 rounded-lg border-l-4 ${
                 alert.severity === 'critical' ? 'border-red-500 bg-red-50' :
-                alert.severity === 'warning' ? 'border-yellow-500 bg-yellow-50' :
+                alert.severity === 'medium' ? 'border-yellow-500 bg-yellow-50' :
                 'border-blue-500 bg-blue-50'
               }`}
             >
@@ -459,16 +471,16 @@ export default function EnhancedSafetyMonitor({ className }: EnhancedSafetyMonit
                 <div className="flex items-center space-x-3">
                   <div className={`p-2 rounded-full ${
                     alert.severity === 'critical' ? 'bg-red-100' :
-                    alert.severity === 'warning' ? 'bg-yellow-100' :
+                    alert.severity === 'medium' ? 'bg-yellow-100' :
                     'bg-blue-100'
                   }`}>
                     {alert.severity === 'critical' && <AlertCircle className="h-4 w-4 text-red-600" />}
-                    {alert.severity === 'warning' && <AlertTriangle className="h-4 w-4 text-yellow-600" />}
-                    {alert.severity === 'info' && <Info className="h-4 w-4 text-blue-600" />}
+                    {alert.severity === 'medium' && <AlertTriangle className="h-4 w-4 text-yellow-600" />}
+                    {alert.severity === 'low' && <Info className="h-4 w-4 text-blue-600" />}
                   </div>
                   <div>
                     <p className="font-medium">{alert.message}</p>
-                    <p className="text-sm text-gray-600">{alert.timestamp}</p>
+                    <p className="text-sm text-gray-600">{new Date(alert.timestamp).toLocaleString()}</p>
                   </div>
                 </div>
                 
@@ -476,7 +488,7 @@ export default function EnhancedSafetyMonitor({ className }: EnhancedSafetyMonit
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => acknowledgeAlert(alert.id)}
+                    onClick={() => onAcknowledgeAlert(alert.id)}
                   >
                     Acknowledge
                   </Button>
@@ -548,335 +560,13 @@ export default function EnhancedSafetyMonitor({ className }: EnhancedSafetyMonit
   }
 
   return (
-    <div className={className}>
+    <div>
       {renderRealTimeStatus()}
       {renderComplianceRules()}
       {renderAlerts()}
       {renderInsights()}
     </div>
   );
-}>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              {getStatusIcon(status.overallStatus)}
-              <div>
-                <CardTitle className="text-lg">Safety Monitor</CardTitle>
-                <CardDescription className="text-sm">
-                  Ultra-conservative LinkedIn compliance (15% limits)
-                </CardDescription>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className={`text-3xl font-bold ${getScoreColor(status.score)}`}>
-                {status.score}
-              </div>
-              <div className="text-sm text-gray-500">Safety Score</div>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {/* Safety Score Progress */}
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-medium">Overall Safety</span>
-                <span className="text-sm text-gray-500">
-                  {status.score}/100
-                </span>
-              </div>
-              <Progress 
-                value={status.score} 
-                className="h-3"
-                style={{
-                  '--progress-background': status.score >= 80 ? '#10b981' : 
-                                        status.score >= 60 ? '#f59e0b' : 
-                                        status.score >= 40 ? '#f97316' : '#ef4444'
-                } as React.CSSProperties}
-              />
-            </div>
+};
 
-            {/* Daily Usage Limits */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              <div className="text-center">
-                <Users className="h-5 w-5 mx-auto mb-1 text-blue-500" />
-                <div className="text-xs text-gray-600">Connections</div>
-                <div className="text-sm font-medium">
-                  {status.metrics.dailyConnections}/{linkedInLimits.connections.daily}
-                </div>
-                <Progress 
-                  value={usagePercentages.connections} 
-                  className="h-1 mt-1"
-                />
-              </div>
-              <div className="text-center">
-                <Heart className="h-5 w-5 mx-auto mb-1 text-red-500" />
-                <div className="text-xs text-gray-600">Likes</div>
-                <div className="text-sm font-medium">
-                  {status.metrics.dailyLikes}/{linkedInLimits.likes.daily}
-                </div>
-                <Progress 
-                  value={usagePercentages.likes} 
-                  className="h-1 mt-1"
-                />
-              </div>
-              <div className="text-center">
-                <MessageSquare className="h-5 w-5 mx-auto mb-1 text-green-500" />
-                <div className="text-xs text-gray-600">Comments</div>
-                <div className="text-sm font-medium">
-                  {status.metrics.dailyComments}/{linkedInLimits.comments.daily}
-                </div>
-                <Progress 
-                  value={usagePercentages.comments} 
-                  className="h-1 mt-1"
-                />
-              </div>
-              <div className="text-center">
-                <Eye className="h-5 w-5 mx-auto mb-1 text-purple-500" />
-                <div className="text-xs text-gray-600">Views</div>
-                <div className="text-sm font-medium">
-                  {status.metrics.dailyProfileViews}/{linkedInLimits.profileViews.daily}
-                </div>
-                <Progress 
-                  value={usagePercentages.profileViews} 
-                  className="h-1 mt-1"
-                />
-              </div>
-              <div className="text-center">
-                <Target className="h-5 w-5 mx-auto mb-1 text-orange-500" />
-                <div className="text-xs text-gray-600">Follows</div>
-                <div className="text-sm font-medium">
-                  {status.metrics.dailyFollows}/{linkedInLimits.follows.daily}
-                </div>
-                <Progress 
-                  value={usagePercentages.follows} 
-                  className="h-1 mt-1"
-                />
-              </div>
-            </div>
-
-            {/* Performance Metrics */}
-            <div className="grid grid-cols-3 gap-4 pt-3 border-t">
-              <div className="text-center">
-                <div className="text-lg font-semibold text-green-600">
-                  {status.metrics.connectionAcceptanceRate}%
-                </div>
-                <div className="text-xs text-gray-600">Acceptance Rate</div>
-              </div>
-              <div className="text-center">
-                <div className="text-lg font-semibold text-blue-600">
-                  {status.metrics.engagementSuccessRate}%
-                </div>
-                <div className="text-xs text-gray-600">Success Rate</div>
-              </div>
-              <div className="text-center">
-                <div className="text-lg font-semibold text-purple-600">
-                  {Math.round(status.metrics.averageResponseTime)}s
-                </div>
-                <div className="text-xs text-gray-600">Avg Response</div>
-              </div>
-            </div>
-
-            {/* Emergency Controls */}
-            <div className="flex items-center justify-between pt-3 border-t">
-              <div className="text-sm text-gray-600">
-                Last check: {new Date(status.lastHealthCheck).toLocaleTimeString()}
-              </div>
-              <div className="flex space-x-2">
-                {status.overallStatus === 'suspended' ? (
-                  <Button
-                    onClick={onResumeAutomation}
-                    size="sm"
-                    className="bg-green-600 hover:bg-green-700"
-                  >
-                    <Play className="h-4 w-4 mr-1" />
-                    Resume
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={handleEmergencyStop}
-                    variant={emergencyStopPending ? "destructive" : "outline"}
-                    size="sm"
-                    className={emergencyStopPending ? "animate-pulse" : ""}
-                  >
-                    <AlertOctagon className="h-4 w-4 mr-1" />
-                    {emergencyStopPending ? "Confirm Stop" : "Emergency Stop"}
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Active Alerts */}
-      {status.activeAlerts.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2 text-lg">
-              <AlertTriangle className="h-5 w-5 text-red-500" />
-              <span>Active Safety Alerts</span>
-              <Badge variant="destructive">{status.activeAlerts.length}</Badge>
-            </CardTitle>
-            <CardDescription>
-              Immediate attention required for these safety concerns
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {status.activeAlerts.map((alert) => (
-                <Alert
-                  key={alert.id}
-                  className={`${getAlertColor(alert.severity)} border-l-4`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <Badge 
-                          variant={alert.severity === 'critical' ? 'destructive' : 'secondary'}
-                          className="text-xs"
-                        >
-                          {alert.severity.toUpperCase()}
-                        </Badge>
-                        <span className="text-xs text-gray-500">
-                          {alert.type.replace('_', ' ').toUpperCase()}
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          {new Date(alert.timestamp).toLocaleTimeString()}
-                        </span>
-                      </div>
-                      <AlertDescription className="text-sm font-medium">
-                        {alert.message}
-                      </AlertDescription>
-                    </div>
-                    {!alert.acknowledged && (
-                      <Button
-                        onClick={() => handleAcknowledgeAlert(alert.id)}
-                        disabled={acknowledging === alert.id}
-                        size="sm"
-                        variant="outline"
-                        className="ml-2"
-                      >
-                        {acknowledging === alert.id ? (
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                        ) : (
-                          'Acknowledge'
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                </Alert>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Risk Factors Analysis */}
-      {status.riskFactors.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2 text-lg">
-              <TrendingUp className="h-5 w-5 text-orange-500" />
-              <span>Risk Analysis</span>
-            </CardTitle>
-            <CardDescription>
-              Factors affecting your automation safety score
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {status.riskFactors.map((factor, index) => (
-                <div key={index} className="border rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="font-medium text-sm">{factor.category}</div>
-                    <div className="flex items-center space-x-2">
-                      <Progress 
-                        value={factor.score} 
-                        className="w-20 h-2"
-                      />
-                      <span className={`text-sm font-medium ${getScoreColor(factor.score)}`}>
-                        {factor.score}%
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-sm text-gray-600 mb-3">{factor.description}</p>
-                  {factor.recommendations.length > 0 && (
-                    <div className="space-y-1">
-                      <div className="text-xs font-medium text-gray-700">Recommendations:</div>
-                      <ul className="text-xs text-gray-600 space-y-1">
-                        {factor.recommendations.map((rec, recIndex) => (
-                          <li key={recIndex} className="flex items-start space-x-1">
-                            <span>•</span>
-                            <span>{rec}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Subscription Tier Benefits */}
-      {subscriptionTier === 'free' && (
-        <Card className="border-blue-200 bg-blue-50">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2 text-lg text-blue-700">
-              <Zap className="h-5 w-5" />
-              <span>Upgrade for Enhanced Safety</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm text-blue-600 space-y-2">
-              <p>Premium features include:</p>
-              <ul className="space-y-1 ml-4">
-                <li>• Advanced risk prediction algorithms</li>
-                <li>• Custom safety thresholds and alerts</li>
-                <li>• Detailed compliance reports</li>
-                <li>• Priority safety monitoring</li>
-                <li>• Smart recovery recommendations</li>
-              </ul>
-              <Button size="sm" className="mt-3 bg-blue-600 hover:bg-blue-700">
-                Upgrade to Premium
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Safety Guidelines */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2 text-lg">
-            <Info className="h-5 w-5 text-blue-500" />
-            <span>Safety Guidelines</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-sm text-gray-600 space-y-3">
-            <div>
-              <div className="font-medium mb-1">Ultra-Conservative Approach</div>
-              <p>Our limits are set at just 15% of LinkedIn's published limits to ensure maximum safety and account protection.</p>
-            </div>
-            <div>
-              <div className="font-medium mb-1">Human-Like Patterns</div>
-              <p>All automation includes randomized delays and natural behavior patterns to maintain authenticity.</p>
-            </div>
-            <div>
-              <div className="font-medium mb-1">Automatic Monitoring</div>
-              <p>Continuous health checks every minute with automatic shutoffs if any concerning patterns are detected.</p>
-            </div>
-            <div>
-              <div className="font-medium mb-1">Emergency Protocols</div>
-              <p>Immediate suspension if safety score drops below 40 or if any critical alerts are triggered.</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
+export { EnhancedSafetyMonitor };

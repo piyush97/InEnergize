@@ -12,14 +12,9 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  Shield,
-  Activity,
   Loader2,
-  Play,
   RefreshCw,
   AlertOctagon,
-  Info,
-  Zap,
   Timer
 } from "lucide-react";
 
@@ -148,12 +143,12 @@ export default function EmergencyStopComponent({
   }, [isOpen, isStopping, onClose]);
 
   // Listen for automation stop events
-  useWebSocketEvent('automation_stopped', useCallback((data) => {
+  useWebSocketEvent('automation_stopped', useCallback((data: unknown) => {
     setStopProgress({
       stage: 'completed',
       progress: 100,
       message: 'Automation successfully stopped',
-      details: `Stopped ${data.itemsStopped || 0} pending actions`
+      details: `Stopped ${(data as any)?.itemsStopped || 0} pending actions`
     });
   }, []));
 
@@ -307,8 +302,8 @@ export default function EmergencyStopComponent({
                           <span>{queueItems?.length || 0} pending</span>
                         </div>
                         <div>
-                          <span className="block font-medium">Active Since</span>
-                          <span>{overview.lastActivity ? new Date(overview.lastActivity).toLocaleTimeString() : 'N/A'}</span>
+                          <span className="block font-medium">Last Check</span>
+                          <span>{overview.safety?.lastHealthCheck ? new Date(overview.safety.lastHealthCheck).toLocaleTimeString() : 'N/A'}</span>
                         </div>
                       </div>
                     )}

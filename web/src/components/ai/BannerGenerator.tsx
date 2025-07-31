@@ -4,6 +4,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -34,7 +35,6 @@ import {
   Image as ImageIcon,
   Crown,
   TrendingUp,
-  Users,
   Heart,
   GraduationCap,
   Building2
@@ -271,7 +271,7 @@ export const BannerGenerator: React.FC<BannerGeneratorProps> = ({ onBannerGenera
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-    } catch (err) {
+    } catch {
       setError('Failed to download banner');
     }
   };
@@ -567,9 +567,11 @@ export const BannerGenerator: React.FC<BannerGeneratorProps> = ({ onBannerGenera
               <CardContent className="space-y-4">
                 {/* Banner Preview */}
                 <div className="relative">
-                  <img
+                  <Image
                     src={generatedBanner.url}
                     alt="Generated LinkedIn Banner"
+                    width={1584}
+                    height={396}
                     className="w-full rounded-lg border"
                     style={{ aspectRatio: '4/1' }}
                   />
