@@ -18,7 +18,6 @@ import {
 import {
   Clock,
   Search,
-  Filter,
   Calendar,
   TrendingUp,
   Eye,
@@ -209,7 +208,7 @@ export const ContentQueuePanel: React.FC<ContentQueuePanelProps> = ({
             </Select>
 
             {/* Sort By */}
-            <Select value={sortBy} onValueChange={(value: 'priority' | 'created' | 'engagement') => setSortBy(value)}>
+            <Select value={sortBy} onValueChange={(value) => setSortBy(value as 'priority' | 'created' | 'engagement')}>
               <SelectTrigger>
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
