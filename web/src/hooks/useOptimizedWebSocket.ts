@@ -12,7 +12,7 @@ interface WebSocketOptions {
   onOpen?: (event: Event) => void;
   onClose?: (event: CloseEvent) => void;
   onError?: (event: Event) => void;
-  onMessage?: (data: any) => void;
+  onMessage?: (data: unknown) => void;
   onReconnect?: (attempt: number) => void;
   debug?: boolean;
 }
@@ -22,14 +22,14 @@ interface WebSocketState {
   isConnecting: boolean;
   isReconnecting: boolean;
   reconnectAttempt: number;
-  lastMessage: any;
+  lastMessage: unknown;
   lastUpdate: Date | null;
   error: Error | null;
   latency: number;
 }
 
 interface WebSocketReturn extends WebSocketState {
-  sendMessage: (data: any) => void;
+  sendMessage: (data: Record<string, unknown>) => void;
   disconnect: () => void;
   reconnect: () => void;
   subscribeToChannel: (channel: string) => void;
@@ -55,11 +55,11 @@ export function useOptimizedWebSocket(options: WebSocketOptions): WebSocketRetur
 
   const router = useRouter();
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
-  const heartbeatIntervalRef = useRef<NodeJS.Timeout>();
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const latencyCheckRef = useRef<{ timestamp: number; id: string } | null>(null);
   const subscribedChannels = useRef<Set<string>>(new Set());
-  const messageQueue = useRef<any[]>([]);
+  const messageQueue = useRef<Record<string, unknown>[]>([]);
 
   const [state, setState] = useState<WebSocketState>({
     isConnected: false,
@@ -74,7 +74,7 @@ export function useOptimizedWebSocket(options: WebSocketOptions): WebSocketRetur
 
   // Debug logging
   const log = useCallback(
-    (...args: any[]) => {
+    (...args: unknown[]) => {
       if (debug) {
         console.log('[WebSocket]', ...args);
       }
@@ -164,7 +164,7 @@ export function useOptimizedWebSocket(options: WebSocketOptions): WebSocketRetur
         const data = JSON.parse(event.data);
 
         // Handle pong response for latency measurement
-        if (data.type === 'pong' && latencyCheckRef.current?.id === data.id) {
+        if (data.type === 'pong' && latencyCheckRef.current?.id === data.id && latencyCheckRef.current) {
           const latency = Date.now() - latencyCheckRef.current.timestamp;
           setState((prev) => ({ ...prev, latency }));
           latencyCheckRef.current = null;
@@ -292,12 +292,12 @@ export function useOptimizedWebSocket(options: WebSocketOptions): WebSocketRetur
 
   // Send message
   const sendMessage = useCallback(
-    (data: any) => {
+    (data: unknown) => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify(data));
       } else {
         log('Queueing message (not connected)');
-        messageQueue.current.push(data);
+        messageQueue.current.push(data as Record<string, unknown>);
       }
     },
     [log]
@@ -326,7 +326,7 @@ export function useOptimizedWebSocket(options: WebSocketOptions): WebSocketRetur
   );
 
   // Manual reconnect
-  const reconnect = useCallback(() => {
+  const reconnectWebSocket = useCallback(() => {
     disconnect();
     setState((prev) => ({ ...prev, reconnectAttempt: 0 }));
     setTimeout(connect, 100);
@@ -362,23 +362,24 @@ export function useOptimizedWebSocket(options: WebSocketOptions): WebSocketRetur
       ...state,
       sendMessage,
       disconnect,
-      reconnect,
+      reconnect: reconnectWebSocket,
       subscribeToChannel,
       unsubscribeFromChannel,
     }),
-    [state, sendMessage, disconnect, reconnect, subscribeToChannel, unsubscribeFromChannel]
+    [state, sendMessage, disconnect, reconnectWebSocket, subscribeToChannel, unsubscribeFromChannel]
   );
 }
 
 // Typed WebSocket hook for specific message types
-export function useTypedWebSocket<T = any>(options: WebSocketOptions) {
+export function useTypedWebSocket<T = unknown>(options: WebSocketOptions) {
   const [messages, setMessages] = useState<T[]>([]);
   
   const ws = useOptimizedWebSocket({
     ...options,
-    onMessage: (data: T) => {
-      setMessages((prev) => [...prev, data].slice(-100)); // Keep last 100 messages
-      options.onMessage?.(data);
+    onMessage: (data: unknown) => {
+      const typedData = data as T;
+      setMessages((prev) => [...prev, typedData].slice(-100)); // Keep last 100 messages
+      options.onMessage?.(typedData);
     },
   });
 

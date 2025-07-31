@@ -8,7 +8,9 @@ import {
   QueueItem,
   MessageTemplate,
   AutomationSettings,
-  AutomationEvent
+  AutomationEvent,
+  ScheduleConnectionRequest,
+  ScheduleEngagementRequest
 } from '@/types/automation';
 
 // State interfaces
@@ -45,8 +47,8 @@ type AutomationAction =
 // Context interfaces
 interface AutomationContextType extends AutomationState {
   // Actions
-  scheduleConnection: (request: any) => Promise<void>;
-  scheduleEngagement: (request: any) => Promise<void>;
+  scheduleConnection: (request: ScheduleConnectionRequest) => Promise<void>;
+  scheduleEngagement: (request: ScheduleEngagementRequest) => Promise<void>;
   emergencyStop: () => Promise<void>;
   resumeAutomation: () => Promise<void>;
   updateTemplate: (templateId: string, updates: Partial<MessageTemplate>) => Promise<void>;
@@ -131,7 +133,7 @@ function automationReducer(state: AutomationState, action: AutomationAction): Au
     case 'UPDATE_TEMPLATES':
       return { 
         ...state, 
-        templates: action.payload.sort((a, b) => b.successRate - a.successRate),
+        templates: action.payload.sort((a, b) => (b.successRate || 0) - (a.successRate || 0)),
         lastUpdate: new Date(),
       };
     
@@ -147,7 +149,7 @@ function automationReducer(state: AutomationState, action: AutomationAction): Au
         ...state,
         connectionHealth: {
           score: action.payload.score,
-          status: action.payload.status as any,
+          status: action.payload.status as 'excellent' | 'good' | 'fair' | 'poor',
           latency: action.payload.latency,
         },
       };
@@ -222,8 +224,8 @@ export function AutomationProvider({ children, userId, subscriptionTier }: Autom
     unsubscribeFromChannel,
   } = useOptimizedWebSocket({
     ...wsConfig,
-    onMessage: (data: AutomationEvent) => {
-      handleWebSocketMessage(data);
+    onMessage: (data: unknown) => {
+      handleWebSocketMessage(data as AutomationEvent);
     },
     onOpen: () => {
       console.log('Automation WebSocket connected');
@@ -240,7 +242,7 @@ export function AutomationProvider({ children, userId, subscriptionTier }: Autom
 
   // WebSocket message handler
   const handleWebSocketMessage = useCallback((data: AutomationEvent) => {
-    switch (data.type) {
+    switch ((data as any).type) {
       case 'overview_update':
         dispatch({ type: 'UPDATE_OVERVIEW', payload: data.data as AutomationOverview });
         break;
@@ -473,11 +475,11 @@ export function useAutomationSafety() {
     emergencyStop,
     acknowledgeAlert,
     connectionHealth,
-    isCompliant: safetyStatus?.score >= 60,
-    needsAttention: safetyStatus?.activeAlerts.some(alert => alert.severity === 'high' || alert.severity === 'critical'),
-    complianceLevel: safetyStatus?.score >= 80 ? 'excellent' : 
-                    safetyStatus?.score >= 60 ? 'good' : 
-                    safetyStatus?.score >= 40 ? 'warning' : 'critical',
+    isCompliant: (safetyStatus?.score || 0) >= 60,
+    needsAttention: safetyStatus?.activeAlerts?.some(alert => alert.severity === 'high' || alert.severity === 'critical') || false,
+    complianceLevel: (safetyStatus?.score || 0) >= 80 ? 'excellent' : 
+                    (safetyStatus?.score || 0) >= 60 ? 'good' : 
+                    (safetyStatus?.score || 0) >= 40 ? 'warning' : 'critical',
   };
 }
 

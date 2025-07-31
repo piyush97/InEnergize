@@ -22,14 +22,14 @@ interface WebSocketContextType {
   lastError: string | null;
   
   // Core methods
-  sendMessage: (message: any) => void;
+  sendMessage: (message: Record<string, unknown>) => void;
   subscribeToChannel: (channel: string) => void;
   unsubscribeFromChannel: (channel: string) => void;
   reconnect: () => void;
   
   // Event listeners
-  addEventListener: (event: string, handler: (data: any) => void) => () => void;
-  removeEventListener: (event: string, handler: (data: any) => void) => void;
+  addEventListener: (event: string, handler: (data: unknown) => void) => () => void;
+  removeEventListener: (event: string, handler: (data: unknown) => void) => void;
   
   // Performance metrics
   messagesSent: number;
@@ -66,7 +66,7 @@ export function WebSocketProvider({
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   
   // Event listeners registry
-  const eventListenersRef = useRef<Map<string, Set<(data: any) => void>>>(new Map());
+  const eventListenersRef = useRef<Map<string, Set<(data: unknown) => void>>>(new Map());
   
   // Performance metrics calculation
   const averageLatency = useMemo(() => {
@@ -114,23 +114,24 @@ export function WebSocketProvider({
   } = useOptimizedWebSocket({
     ...wsConfig,
     
-    onMessage: useCallback((data: AutomationEvent) => {
+    onMessage: useCallback((data: unknown) => {
       setMessagesReceived(prev => prev + 1);
       
       // Update latency history for performance monitoring
-      if (enablePerformanceMonitoring && data.timestamp) {
-        const messageLatency = Date.now() - new Date(data.timestamp).getTime();
+      const automationData = data as AutomationEvent;
+      if (enablePerformanceMonitoring && automationData.timestamp) {
+        const messageLatency = Date.now() - new Date(automationData.timestamp).getTime();
         setLatencyHistory(prev => [...prev.slice(-19), messageLatency]); // Keep last 20 measurements
       }
       
       // Emit to registered event listeners
-      const listeners = eventListenersRef.current.get(data.type);
+      const listeners = eventListenersRef.current.get(automationData.type);
       if (listeners) {
         listeners.forEach(handler => {
           try {
             handler(data);
           } catch (error) {
-            console.error(`Error in WebSocket event handler for ${data.type}:`, error);
+            console.error(`Error in WebSocket event handler for ${automationData.type}:`, error);
           }
         });
       }
@@ -170,9 +171,9 @@ export function WebSocketProvider({
       if (listeners) {
         listeners.forEach(handler => handler({ userId, timestamp: new Date() }));
       }
-    }, [userId, wsSubscribeToChannel]),
+    }, [userId]),
     
-    onClose: useCallback((event) => {
+    onClose: useCallback((event: CloseEvent) => {
       console.log('🔌 WebSocket disconnected:', event.reason);
       
       // Emit disconnection event
@@ -186,7 +187,7 @@ export function WebSocketProvider({
       }
     }, []),
     
-    onError: useCallback((error) => {
+    onError: useCallback((error: Event) => {
       const errorMessage = error instanceof Error ? error.message : 'WebSocket connection error';
       console.error('❌ WebSocket error:', errorMessage);
       setLastError(errorMessage);
@@ -203,7 +204,7 @@ export function WebSocketProvider({
       }
     }, [reconnectAttempts]),
     
-    onReconnecting: useCallback(() => {
+    onReconnect: useCallback(() => {
       console.log('🔄 WebSocket reconnecting...');
       setReconnectAttempts(prev => prev + 1);
       
@@ -219,7 +220,7 @@ export function WebSocketProvider({
   });
 
   // Enhanced sendMessage with performance tracking
-  const sendMessage = useCallback((message: any) => {
+  const sendMessage = useCallback((message: Record<string, unknown>) => {
     try {
       wsSendMessage(message);
       setMessagesSent(prev => prev + 1);
@@ -230,7 +231,7 @@ export function WebSocketProvider({
   }, [wsSendMessage]);
 
   // Event listener management
-  const addEventListener = useCallback((event: string, handler: (data: any) => void) => {
+  const addEventListener = useCallback((event: string, handler: (data: unknown) => void) => {
     const eventListeners = eventListenersRef.current;
     
     if (!eventListeners.has(event)) {
@@ -251,7 +252,7 @@ export function WebSocketProvider({
     };
   }, []);
 
-  const removeEventListener = useCallback((event: string, handler: (data: any) => void) => {
+  const removeEventListener = useCallback((event: string, handler: (data: unknown) => void) => {
     const listeners = eventListenersRef.current.get(event);
     if (listeners) {
       listeners.delete(handler);
@@ -382,7 +383,7 @@ export function useWebSocket(): WebSocketContextType {
 }
 
 // Typed hook for specific event types
-export function useWebSocketEvent<T = any>(
+export function useWebSocketEvent<T = unknown>(
   event: string,
   handler: (data: T) => void,
   dependencies: React.DependencyList = []
@@ -390,7 +391,7 @@ export function useWebSocketEvent<T = any>(
   const { addEventListener } = useWebSocket();
   
   useEffect(() => {
-    const cleanup = addEventListener(event, handler);
+    const cleanup = addEventListener(event, (data: unknown) => handler(data as T));
     return cleanup;
   }, [addEventListener, event, ...dependencies]);
 }
