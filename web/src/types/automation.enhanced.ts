@@ -5,7 +5,6 @@
  */
 
 import type {
-  ApiResponse,
   AsyncState,
   BaseComponentProps,
   UserId,

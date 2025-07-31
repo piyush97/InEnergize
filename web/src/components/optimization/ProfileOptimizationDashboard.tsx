@@ -464,7 +464,7 @@ const ProfileOptimizationDashboard: React.FC<ProfileOptimizationDashboardProps> 
                         className="pl-9 w-64"
                       />
                     </div>
-                    <Select value={filter} onValueChange={(value: 'all' | 'pending' | 'in_progress' | 'completed') => setFilter(value)}>
+                    <Select value={filter} onValueChange={(value) => setFilter(value as 'all' | 'pending' | 'in_progress' | 'completed')}>
                       <SelectTrigger className="w-40">
                         <SelectValue />
                       </SelectTrigger>
