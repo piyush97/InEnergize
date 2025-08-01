@@ -1,0 +1,563 @@
+# InErgize Phase 4 - Zero Trust Security Architecture
+# Enterprise-grade security with defense-in-depth, mTLS, and continuous verification
+
+---
+# Network Policies - Ingress Traffic Control
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: inergize-zero-trust-ingress
+  namespace: inergize-production
+  labels:
+    security.inergize.com/tier: "perimeter"
+    compliance.inergize.com/classification: "restricted"
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Only allow traffic from Istio ingress gateway
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    - podSelector:
+        matchLabels:
+          app: istio-gateway
+  # Allow health checks from monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 3001  # Auth service health
+    - protocol: TCP
+      port: 3002  # User service health
+    - protocol: TCP
+      port: 3003  # LinkedIn service health
+    - protocol: TCP
+      port: 3004  # Analytics service health
+    - protocol: TCP
+      port: 3005  # AI service health
+
+---
+# Service Mesh Security - Auth Service
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: auth-service-zero-trust
+  namespace: inergize-production
+  labels:
+    security.inergize.com/service: "auth"
+    security.inergize.com/critical: "true"
+spec:
+  podSelector:
+    matchLabels:
+      app: auth-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow traffic from API Gateway (Kong/Istio)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+  # Allow health checks
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 3001
+  egress:
+  # Allow connections to PostgreSQL
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgresql
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Allow connections to Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6380
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow external OAuth providers (HTTPS only)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# LinkedIn Service - Ultra-Restricted Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: linkedin-service-ultra-restricted
+  namespace: inergize-production
+  labels:
+    security.inergize.com/service: "linkedin"
+    security.inergize.com/critical: "true"
+    compliance.inergize.com/monitoring: "continuous"
+    compliance.inergize.com/classification: "restricted"
+spec:
+  podSelector:
+    matchLabels:
+      app: linkedin-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Only allow authenticated traffic from API Gateway
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    - podSelector:
+        matchLabels:
+          app: istio-gateway
+          security.inergize.com/mTLS: "required"
+  # Allow health checks from monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 3003
+  egress:
+  # Allow connections to Redis only (no direct DB access)
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6380
+  # Allow connections to Auth Service for validation
+  - to:
+    - podSelector:
+        matchLabels:
+          app: auth-service
+    ports:
+    - protocol: TCP
+      port: 3001
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow ONLY LinkedIn API endpoints (HTTPS only)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    # Additional egress rules will be applied via service mesh policies
+
+---
+# Analytics Service Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: analytics-service-secure
+  namespace: inergize-production
+  labels:
+    security.inergize.com/service: "analytics"
+    security.inergize.com/data-sensitive: "true"
+spec:
+  podSelector:
+    matchLabels:
+      app: analytics-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow traffic from API Gateway
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+  # Allow WebSocket connections from verified clients
+  - from:
+    - podSelector:
+        matchLabels:
+          app: web-frontend
+  # Allow monitoring and health checks
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 3004
+    - protocol: TCP
+      port: 3007
+    - protocol: TCP
+      port: 9090
+  egress:
+  # Allow connections to TimescaleDB
+  - to:
+    - podSelector:
+        matchLabels:
+          app: timescaledb
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Allow connections to Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6380
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# AI Service Network Policy - Secure AI/ML Operations
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai-service-secure
+  namespace: inergize-production
+  labels:
+    security.inergize.com/service: "ai"
+    security.inergize.com/external-api: "true"
+spec:
+  podSelector:
+    matchLabels:
+      app: ai-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow traffic from API Gateway
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+  # Allow health checks
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 3005
+  egress:
+  # Allow connections to Redis for caching
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6380
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow HTTPS to OpenAI and Anthropic APIs only
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    # Egress filtering will be enforced via service mesh
+
+---
+# User Service Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: user-service-secure
+  namespace: inergize-production
+  labels:
+    security.inergize.com/service: "user"
+    security.inergize.com/pii-handling: "true"
+spec:
+  podSelector:
+    matchLabels:
+      app: user-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow traffic from API Gateway
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+  # Allow health checks
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 3002
+  egress:
+  # Allow connections to PostgreSQL
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgresql
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Allow connections to Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6380
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# Database Network Policies - PostgreSQL
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgresql-zero-trust
+  namespace: inergize-production
+  labels:
+    security.inergize.com/data-tier: "critical"
+    security.inergize.com/encryption: "required"
+spec:
+  podSelector:
+    matchLabels:
+      app: postgresql
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Only allow connections from authorized services
+  - from:
+    - podSelector:
+        matchLabels:
+          app: auth-service
+  - from:
+    - podSelector:
+        matchLabels:
+          app: user-service
+  # Allow backup service access
+  - from:
+    - podSelector:
+        matchLabels:
+          app: backup-service
+  # Allow monitoring for health checks
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 5432
+  egress:
+  # Allow DNS resolution for replication/backup
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow HTTPS for backup uploads (encrypted)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# TimescaleDB Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: timescaledb-zero-trust
+  namespace: inergize-production
+  labels:
+    security.inergize.com/data-tier: "analytics"
+    security.inergize.com/time-series: "true"
+spec:
+  podSelector:
+    matchLabels:
+      app: timescaledb
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Only allow connections from analytics service
+  - from:
+    - podSelector:
+        matchLabels:
+          app: analytics-service
+  # Allow backup service access
+  - from:
+    - podSelector:
+        matchLabels:
+          app: backup-service
+  # Allow monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 5432
+  egress:
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow HTTPS for backup/replication
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# Redis Network Policy - Cache & Queue Security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-zero-trust
+  namespace: inergize-production
+  labels:
+    security.inergize.com/cache-tier: "secure"
+    security.inergize.com/tls: "required"
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow connections from all services (with authentication)
+  - from:
+    - podSelector:
+        matchLabels:
+          component: authentication
+  - from:
+    - podSelector:
+        matchLabels:
+          component: linkedin-integration
+  - from:
+    - podSelector:
+        matchLabels:
+          component: analytics
+  - from:
+    - podSelector:
+        matchLabels:
+          component: artificial-intelligence
+  - from:
+    - podSelector:
+        matchLabels:
+          component: user-management
+  # Allow monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 6380
+  egress:
+  # Allow DNS resolution for cluster operations
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# Deny All Default Policy - Explicit Security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: inergize-production
+  labels:
+    security.inergize.com/policy: "deny-all"
+    security.inergize.com/priority: "lowest"
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  # No rules = deny all traffic by default
+  # Explicit allow rules above will override this
+
+---
+# External Traffic Control - LinkedIn API Access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: external-linkedin-access-control
+  namespace: inergize-production
+  labels:
+    security.inergize.com/external: "linkedin-api"
+    compliance.inergize.com/critical: "true"
+spec:
+  podSelector:
+    matchLabels:
+      app: linkedin-service
+  policyTypes:
+  - Egress
+  egress:
+  # Allow ONLY LinkedIn API endpoints
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    # Additional filtering via Istio/Envoy policies:
+    # - api.linkedin.com
+    # - www.linkedin.com
+    # Block all other external HTTPS traffic
+
+---
+# External Traffic Control - AI Service APIs
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: external-ai-api-access-control
+  namespace: inergize-production
+  labels:
+    security.inergize.com/external: "ai-apis"
+    security.inergize.com/data-egress: "controlled"
+spec:
+  podSelector:
+    matchLabels:
+      app: ai-service
+  policyTypes:
+  - Egress
+  egress:
+  # Allow ONLY OpenAI and Anthropic APIs
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    # Additional filtering via Istio/Envoy policies:
+    # - api.openai.com
+    # - api.anthropic.com
+    # Block all other external HTTPS traffic

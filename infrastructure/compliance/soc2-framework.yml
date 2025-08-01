@@ -1,0 +1,639 @@
+# InErgize Phase 4 - SOC2 Compliance Framework
+# Trust Services Criteria implementation for Security, Availability, Processing Integrity, Confidentiality
+
+---
+# SOC2 Audit Logging Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: soc2-audit-config
+  namespace: inergize-production
+  labels:
+    compliance.inergize.com/framework: "soc2"
+    compliance.inergize.com/version: "2017"
+data:
+  audit-policy.yml: |
+    # SOC2 Audit Policy - Comprehensive Event Logging
+    apiVersion: audit.k8s.io/v1
+    kind: Policy
+    rules:
+    # Security Criterion (CC6) - System Access Controls
+    - level: Metadata
+      namespaces: ["inergize-production"]
+      resources:
+      - group: ""
+        resources: ["secrets", "configmaps"]
+      verbs: ["get", "list", "create", "update", "patch", "delete"]
+      
+    # Authentication and Authorization Events
+    - level: Request
+      users: ["system:admin", "system:serviceaccount:inergize-production:*"]
+      verbs: ["create", "update", "patch", "delete"]
+      resources:
+      - group: "rbac.authorization.k8s.io"
+        resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+    
+    # Data Access Logging (Processing Integrity - CC8)
+    - level: RequestResponse
+      namespaces: ["inergize-production"]
+      resources:
+      - group: ""
+        resources: ["persistentvolumes", "persistentvolumeclaims"]
+      verbs: ["create", "update", "patch", "delete"]
+    
+    # Network Security Events
+    - level: Request
+      resources:
+      - group: "networking.k8s.io"
+        resources: ["networkpolicies"]
+      - group: "networking.istio.io"
+        resources: ["virtualservices", "destinationrules", "gateways"]
+      verbs: ["create", "update", "patch", "delete"]
+    
+    # Availability Monitoring (CC7)
+    - level: Metadata
+      resources:
+      - group: "apps"
+        resources: ["deployments", "replicasets", "daemonsets", "statefulsets"]
+      verbs: ["create", "update", "patch", "delete", "scale"]
+    
+    # Confidentiality Controls (CC6.7)
+    - level: RequestResponse
+      namespaces: ["inergize-production"]
+      resources:
+      - group: ""
+        resources: ["secrets"]
+      verbs: ["get", "list", "watch"]
+      users: ["system:serviceaccount:inergize-production:*"]
+
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush         5
+        Log_Level     info
+        Daemon        off
+        Parsers_File  parsers.conf
+        HTTP_Server   On
+        HTTP_Listen   0.0.0.0
+        HTTP_Port     2020
+        Health_Check  On
+
+    [INPUT]
+        Name              tail
+        Path              /var/log/audit/audit.log
+        Parser            audit_json
+        Tag               kubernetes.audit
+        Refresh_Interval  5
+        Mem_Buf_Limit     50MB
+        Skip_Long_Lines   On
+
+    [INPUT]
+        Name              tail
+        Path              /var/log/containers/*linkedin-service*.log
+        Parser            docker
+        Tag               compliance.linkedin
+        Refresh_Interval  5
+        Mem_Buf_Limit     50MB
+
+    [INPUT]
+        Name              tail
+        Path              /var/log/containers/*auth-service*.log
+        Parser            docker
+        Tag               compliance.auth
+        Refresh_Interval  5
+        Mem_Buf_Limit     50MB
+
+    [FILTER]
+        Name    modify
+        Match   compliance.*
+        Add     soc2_control CC6.1
+        Add     audit_timestamp ${HOSTNAME}
+        Add     compliance_framework SOC2_2017
+
+    [OUTPUT]
+        Name        es
+        Match       kubernetes.audit
+        Host        elasticsearch.monitoring.svc.cluster.local
+        Port        9200
+        Index       soc2-audit-logs
+        Type        _doc
+        Logstash_Format On
+        Logstash_Prefix soc2-audit
+        Time_Key    @timestamp
+        Time_Key_Format %Y-%m-%dT%H:%M:%S.%L%z
+
+    [OUTPUT]
+        Name        es
+        Match       compliance.*
+        Host        elasticsearch.monitoring.svc.cluster.local
+        Port        9200
+        Index       soc2-compliance-logs
+        Type        _doc
+        Logstash_Format On
+        Logstash_Prefix soc2-compliance
+        Time_Key    @timestamp
+
+---
+# SOC2 Data Classification ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: soc2-data-classification
+  namespace: inergize-production
+  labels:
+    compliance.inergize.com/framework: "soc2"
+    compliance.inergize.com/criterion: "confidentiality"
+data:
+  classification.yml: |
+    # SOC2 Data Classification Schema
+    data_classifications:
+      public:
+        description: "Information that can be freely shared"
+        retention_days: 2555  # 7 years
+        encryption_required: false
+        access_controls: "none"
+        examples: ["marketing materials", "public documentation"]
+      
+      internal:
+        description: "Information for internal business use"
+        retention_days: 2555  # 7 years
+        encryption_required: true
+        access_controls: "employee"
+        examples: ["business plans", "internal processes"]
+      
+      confidential:
+        description: "Sensitive business information"
+        retention_days: 2555  # 7 years
+        encryption_required: true
+        encryption_standard: "AES-256"
+        access_controls: "role_based"
+        examples: ["customer data", "financial records", "LinkedIn profiles"]
+      
+      restricted:
+        description: "Highly sensitive information requiring highest protection"
+        retention_days: 1095  # 3 years minimum
+        encryption_required: true
+        encryption_standard: "AES-256-GCM"
+        access_controls: "strict_rbac"
+        audit_level: "comprehensive"
+        examples: ["PII", "authentication credentials", "LinkedIn API tokens"]
+
+  processing_purposes.yml: |
+    # SOC2 Processing Purposes (CC8.1)
+    processing_purposes:
+      profile_optimization:
+        description: "LinkedIn profile enhancement and optimization"
+        legal_basis: "legitimate_interest"
+        data_categories: ["profile_data", "engagement_metrics"]
+        retention_days: 1095
+        
+      automation_services:
+        description: "LinkedIn connection and engagement automation"
+        legal_basis: "contract"
+        data_categories: ["connection_data", "automation_logs"]
+        retention_days: 730
+        compliance_notes: "Ultra-conservative rate limiting applied"
+        
+      analytics_insights:
+        description: "Performance analytics and business intelligence"
+        legal_basis: "legitimate_interest"
+        data_categories: ["aggregated_metrics", "usage_patterns"]
+        retention_days: 2555
+        anonymization_after_days: 365
+
+---
+# SOC2 Access Control RBAC
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: inergize-production
+  name: soc2-auditor
+  labels:
+    compliance.inergize.com/role: "auditor"
+    compliance.inergize.com/criterion: "CC3.1"
+spec:
+  rules:
+  # Read-only access to logs and audit trails
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  # Access to monitoring and metrics
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: ["servicemonitors", "prometheusrules"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: soc2-auditor-binding
+  namespace: inergize-production
+  labels:
+    compliance.inergize.com/binding: "auditor"
+subjects:
+- kind: User
+  name: soc2-auditor@inergize.com
+  apiGroup: rbac.authorization.k8s.io
+- kind: ServiceAccount
+  name: compliance-scanner
+  namespace: inergize-production
+roleRef:
+  kind: Role
+  name: soc2-auditor
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# SOC2 Security Monitoring ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: soc2-security-monitor
+  namespace: inergize-production
+  labels:
+    compliance.inergize.com/service: "security-monitoring"
+    compliance.inergize.com/criterion: "CC6"
+automountServiceAccountToken: true
+
+---
+# SOC2 Compliance Scanner ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: soc2-compliance-scanner
+  labels:
+    compliance.inergize.com/scanner: "comprehensive"
+rules:
+# Security Configuration Scanning (CC6)
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies", "ingresses"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["security.istio.io"]
+  resources: ["peerauthentications", "authorizationpolicies"]
+  verbs: ["get", "list", "watch"]
+# RBAC Review (CC3)
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: soc2-compliance-scanner-binding
+  labels:
+    compliance.inergize.com/binding: "scanner"
+subjects:
+- kind: ServiceAccount
+  name: compliance-scanner
+  namespace: inergize-production
+roleRef:
+  kind: ClusterRole
+  name: soc2-compliance-scanner
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# SOC2 Data Retention CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: soc2-data-retention
+  namespace: inergize-production
+  labels:
+    compliance.inergize.com/process: "data-retention"
+    compliance.inergize.com/criterion: "CC8.1"
+spec:
+  schedule: "0 2 * * 0"  # Weekly on Sunday at 2 AM
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            compliance.inergize.com/job: "data-retention"
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: soc2-security-monitor
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+          containers:
+          - name: data-retention-processor
+            image: ghcr.io/inergize/compliance-tools:latest
+            imagePullPolicy: IfNotPresent
+            env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: postgres-url
+            - name: TIMESCALE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: timescale-url
+            - name: RETENTION_CONFIG_PATH
+              value: "/etc/retention/classification.yml"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: DRY_RUN
+              value: "false"
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Starting SOC2 Data Retention Process..."
+              
+              # Anonymize PII older than 365 days (confidential classification)
+              /app/tools/anonymize-data \
+                --config /etc/retention/classification.yml \
+                --classification confidential \
+                --days 365 \
+                --audit-log /var/log/retention.log
+              
+              # Delete logs older than retention period
+              /app/tools/purge-logs \
+                --elasticsearch-host elasticsearch.monitoring.svc.cluster.local:9200 \
+                --index "soc2-*" \
+                --older-than 2555d \
+                --audit-log /var/log/retention.log
+              
+              # Generate retention compliance report
+              /app/tools/generate-retention-report \
+                --output /var/reports/retention-$(date +%Y%m%d).json \
+                --audit-log /var/log/retention.log
+              
+              echo "Data retention process completed."
+            volumeMounts:
+            - name: retention-config
+              mountPath: /etc/retention
+              readOnly: true
+            - name: retention-logs
+              mountPath: /var/log
+            - name: retention-reports
+              mountPath: /var/reports
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 1000
+              capabilities:
+                drop:
+                - ALL
+          volumes:
+          - name: retention-config
+            configMap:
+              name: soc2-data-classification
+          - name: retention-logs
+            emptyDir:
+              sizeLimit: 100Mi
+          - name: retention-reports
+            persistentVolumeClaim:
+              claimName: compliance-reports-pvc
+
+---
+# SOC2 Security Scanning CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: soc2-security-scan
+  namespace: inergize-production
+  labels:
+    compliance.inergize.com/process: "security-scanning"
+    compliance.inergize.com/criterion: "CC6"
+spec:
+  schedule: "0 6 * * *"  # Daily at 6 AM
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            compliance.inergize.com/job: "security-scan"
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: compliance-scanner
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+          containers:
+          - name: security-scanner
+            image: ghcr.io/inergize/security-scanner:latest
+            imagePullPolicy: IfNotPresent
+            env:
+            - name: KUBECONFIG
+              value: "/etc/kubeconfig/config"
+            - name: SCAN_NAMESPACE
+              value: "inergize-production"
+            - name: COMPLIANCE_FRAMEWORK
+              value: "SOC2_2017"
+            - name: REPORT_FORMAT
+              value: "json"
+            - name: ELASTICSEARCH_HOST
+              value: "elasticsearch.monitoring.svc.cluster.local:9200"
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Starting SOC2 Security Compliance Scan..."
+              
+              # Scan for security misconfigurations (CC6.1)
+              /app/scanners/kube-bench \
+                --config /etc/compliance/soc2-benchmark.yml \
+                --output /var/reports/security-scan-$(date +%Y%m%d).json
+              
+              # Network policy compliance check (CC6.3)
+              /app/scanners/network-policy-scanner \
+                --namespace inergize-production \
+                --output /var/reports/network-scan-$(date +%Y%m%d).json
+              
+              # RBAC compliance audit (CC3.1)
+              /app/scanners/rbac-scanner \
+                --namespace inergize-production \
+                --framework SOC2 \
+                --output /var/reports/rbac-scan-$(date +%Y%m%d).json
+              
+              # Container security scan (CC6.2)
+              /app/scanners/container-scanner \
+                --namespace inergize-production \
+                --severity HIGH,CRITICAL \
+                --output /var/reports/container-scan-$(date +%Y%m%d).json
+              
+              # Upload results to Elasticsearch
+              /app/tools/upload-scan-results \
+                --directory /var/reports \
+                --elasticsearch-host $ELASTICSEARCH_HOST \
+                --index soc2-security-scans
+              
+              echo "Security compliance scan completed."
+            volumeMounts:
+            - name: compliance-config
+              mountPath: /etc/compliance
+              readOnly: true
+            - name: kubeconfig
+              mountPath: /etc/kubeconfig
+              readOnly: true
+            - name: scan-reports
+              mountPath: /var/reports
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "250m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 1000
+              capabilities:
+                drop:
+                - ALL
+          volumes:
+          - name: compliance-config
+            configMap:
+              name: soc2-audit-config
+          - name: kubeconfig
+            secret:
+              secretName: compliance-kubeconfig
+          - name: scan-reports
+            persistentVolumeClaim:
+              claimName: compliance-reports-pvc
+
+---
+# SOC2 Incident Response Webhook
+apiVersion: v1
+kind: Service
+metadata:
+  name: soc2-incident-webhook
+  namespace: inergize-production
+  labels:
+    compliance.inergize.com/service: "incident-response"
+    compliance.inergize.com/criterion: "CC7.4"
+spec:
+  selector:
+    app: soc2-incident-handler
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soc2-incident-handler
+  namespace: inergize-production
+  labels:
+    app: soc2-incident-handler
+    compliance.inergize.com/service: "incident-response"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: soc2-incident-handler
+  template:
+    metadata:
+      labels:
+        app: soc2-incident-handler
+        compliance.inergize.com/service: "incident-response"
+    spec:
+      serviceAccountName: soc2-security-monitor
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: incident-handler
+        image: ghcr.io/inergize/incident-handler:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: ELASTICSEARCH_HOST
+          value: "elasticsearch.monitoring.svc.cluster.local:9200"
+        - name: SLACK_WEBHOOK_URL
+          valueFrom:
+            secretKeyRef:
+              name: incident-response-secrets
+              key: slack-webhook-url
+        - name: PAGERDUTY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: incident-response-secrets
+              key: pagerduty-api-key
+        - name: COMPLIANCE_EMAIL
+          value: "compliance@inergize.com"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 50Mi
+
+---
+# SOC2 Compliance Reports PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: compliance-reports-pvc
+  namespace: inergize-production
+  labels:
+    compliance.inergize.com/storage: "reports"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: fast-ssd

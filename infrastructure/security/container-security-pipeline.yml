@@ -1,0 +1,761 @@
+# InErgize Phase 4 - Container Security Pipeline
+# Comprehensive security scanning, vulnerability management, and hardening automation
+
+---
+# Container Security Scanning Pipeline
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: container-security-pipeline
+  namespace: inergize-production
+  labels:
+    security.inergize.com/pipeline: "comprehensive"
+    compliance.inergize.com/framework: "nist-csf"
+spec:
+  params:
+  - name: image-url
+    type: string
+    description: "Container image URL to scan"
+  - name: severity-threshold
+    type: string
+    default: "HIGH"
+    description: "Minimum severity threshold for blocking deployment"
+  - name: compliance-level
+    type: string
+    default: "enterprise"
+    description: "Compliance level (basic, enterprise, critical)"
+  
+  workspaces:
+  - name: source-workspace
+    description: "Workspace for source code and scan results"
+  - name: security-reports
+    description: "Workspace for security scan results"
+
+  tasks:
+  # Task 1: Container Image Vulnerability Scanning
+  - name: vulnerability-scan
+    taskRef:
+      name: trivy-scanner
+    params:
+    - name: image-url
+      value: $(params.image-url)
+    - name: severity-threshold
+      value: $(params.severity-threshold)
+    workspaces:
+    - name: source
+      workspace: source-workspace
+    - name: reports
+      workspace: security-reports
+
+  # Task 2: Container Configuration Security Scan
+  - name: configuration-scan
+    taskRef:
+      name: dockerfile-security-scan
+    params:
+    - name: image-url
+      value: $(params.image-url)
+    workspaces:
+    - name: source
+      workspace: source-workspace
+    - name: reports
+      workspace: security-reports
+    runAfter:
+    - vulnerability-scan
+
+  # Task 3: Runtime Security Policy Generation
+  - name: runtime-policy-generation
+    taskRef:
+      name: falco-policy-generator
+    params:
+    - name: image-url
+      value: $(params.image-url)
+    - name: compliance-level
+      value: $(params.compliance-level)
+    workspaces:
+    - name: source
+      workspace: source-workspace
+    - name: reports
+      workspace: security-reports
+    runAfter:
+    - configuration-scan
+
+  # Task 4: SBOM Generation
+  - name: sbom-generation
+    taskRef:
+      name: syft-sbom-generator
+    params:
+    - name: image-url
+      value: $(params.image-url)
+    workspaces:
+    - name: source
+      workspace: source-workspace
+    - name: reports
+      workspace: security-reports
+    runAfter:
+    - runtime-policy-generation
+
+  # Task 5: Security Gate Decision
+  - name: security-gate
+    taskRef:
+      name: security-gate-decision
+    params:
+    - name: severity-threshold
+      value: $(params.severity-threshold)
+    - name: compliance-level
+      value: $(params.compliance-level)
+    workspaces:
+    - name: reports
+      workspace: security-reports
+    runAfter:
+    - sbom-generation
+
+  # Task 6: Security Report Upload
+  - name: report-upload
+    taskRef:
+      name: security-report-uploader
+    params:
+    - name: image-url
+      value: $(params.image-url)
+    workspaces:
+    - name: reports
+      workspace: security-reports
+    runAfter:
+    - security-gate
+
+---
+# Trivy Vulnerability Scanner Task
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: trivy-scanner
+  namespace: inergize-production
+  labels:
+    security.inergize.com/scanner: "vulnerability"
+spec:
+  params:
+  - name: image-url
+    type: string
+  - name: severity-threshold
+    type: string
+    default: "HIGH"
+  
+  workspaces:
+  - name: source
+  - name: reports
+
+  steps:
+  - name: trivy-scan
+    image: aquasec/trivy:0.45.0
+    imagePullPolicy: IfNotPresent
+    workingDir: $(workspaces.source.path)
+    script: |
+      #!/bin/sh
+      set -e
+      
+      echo "Starting Trivy vulnerability scan for $(params.image-url)"
+      
+      # Update vulnerability database
+      trivy image --download-db-only
+      
+      # Comprehensive vulnerability scan
+      trivy image \
+        --format json \
+        --output $(workspaces.reports.path)/trivy-vulnerabilities.json \
+        --severity $(params.severity-threshold),CRITICAL \
+        --ignore-unfixed \
+        --skip-files /app/node_modules \
+        --skip-dirs /tmp,/var/tmp \
+        $(params.image-url)
+      
+      # Generate human-readable report
+      trivy image \
+        --format table \
+        --output $(workspaces.reports.path)/trivy-vulnerabilities.txt \
+        --severity $(params.severity-threshold),CRITICAL \
+        --ignore-unfixed \
+        $(params.image-url)
+      
+      # Secret scanning
+      trivy image \
+        --format json \
+        --output $(workspaces.reports.path)/trivy-secrets.json \
+        --scanners secret \
+        $(params.image-url)
+      
+      # License scanning
+      trivy image \
+        --format json \
+        --output $(workspaces.reports.path)/trivy-licenses.json \
+        --scanners license \
+        $(params.image-url)
+      
+      # Generate security metrics
+      CRITICAL_COUNT=$(jq '.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL") | .VulnerabilityID' $(workspaces.reports.path)/trivy-vulnerabilities.json | wc -l)
+      HIGH_COUNT=$(jq '.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH") | .VulnerabilityID' $(workspaces.reports.path)/trivy-vulnerabilities.json | wc -l)
+      
+      cat > $(workspaces.reports.path)/vulnerability-metrics.json << EOF
+      {
+        "image": "$(params.image-url)",
+        "scan_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+        "scanner": "trivy",
+        "critical_vulnerabilities": $CRITICAL_COUNT,
+        "high_vulnerabilities": $HIGH_COUNT,
+        "severity_threshold": "$(params.severity-threshold)",
+        "scan_status": "completed"
+      }
+      EOF
+      
+      echo "Trivy scan completed. Critical: $CRITICAL_COUNT, High: $HIGH_COUNT"
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: false  # Trivy needs to write cache
+      capabilities:
+        drop:
+        - ALL
+
+---
+# Dockerfile Security Scanner Task
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: dockerfile-security-scan
+  namespace: inergize-production
+  labels:
+    security.inergize.com/scanner: "configuration"
+spec:
+  params:
+  - name: image-url
+    type: string
+  
+  workspaces:
+  - name: source
+  - name: reports
+
+  steps:
+  - name: dockerfile-scan
+    image: hadolint/hadolint:v2.12.0-alpine
+    imagePullPolicy: IfNotPresent
+    workingDir: $(workspaces.source.path)
+    script: |
+      #!/bin/sh
+      set -e
+      
+      echo "Starting Dockerfile security configuration scan"
+      
+      # Find Dockerfiles
+      find . -name "Dockerfile*" -type f > $(workspaces.reports.path)/dockerfiles.list
+      
+      # Scan each Dockerfile with Hadolint
+      while IFS= read -r dockerfile; do
+        echo "Scanning $dockerfile"
+        
+        # Run Hadolint with security-focused rules
+        hadolint \
+          --format json \
+          --config /etc/hadolint.yaml \
+          "$dockerfile" > "$(workspaces.reports.path)/hadolint-$(basename $dockerfile).json" || true
+        
+        # Generate security metrics for this Dockerfile
+        ERROR_COUNT=$(jq '[.[] | select(.level=="error")] | length' "$(workspaces.reports.path)/hadolint-$(basename $dockerfile).json" 2>/dev/null || echo "0")
+        WARNING_COUNT=$(jq '[.[] | select(.level=="warning")] | length' "$(workspaces.reports.path)/hadolint-$(basename $dockerfile).json" 2>/dev/null || echo "0")
+        
+        cat >> $(workspaces.reports.path)/dockerfile-metrics.json << EOF
+      {
+        "dockerfile": "$dockerfile",
+        "image": "$(params.image-url)",
+        "scan_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+        "scanner": "hadolint",
+        "errors": $ERROR_COUNT,
+        "warnings": $WARNING_COUNT
+      }
+      EOF
+        
+      done < $(workspaces.reports.path)/dockerfiles.list
+      
+      echo "Dockerfile security scan completed"
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+    volumeMounts:
+    - name: hadolint-config
+      mountPath: /etc/hadolint.yaml
+      subPath: hadolint.yaml
+      readOnly: true
+  
+  volumes:
+  - name: hadolint-config
+    configMap:
+      name: hadolint-security-config
+
+---
+# Falco Runtime Security Policy Generator Task
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: falco-policy-generator
+  namespace: inergize-production
+  labels:
+    security.inergize.com/scanner: "runtime"
+spec:
+  params:
+  - name: image-url
+    type: string
+  - name: compliance-level
+    type: string
+    default: "enterprise"
+  
+  workspaces:
+  - name: source
+  - name: reports
+
+  steps:
+  - name: policy-generation
+    image: falcosecurity/falco:0.35.1
+    imagePullPolicy: IfNotPresent
+    workingDir: $(workspaces.source.path)
+    script: |
+      #!/bin/bash
+      set -e
+      
+      echo "Generating Falco runtime security policies for $(params.image-url)"
+      
+      # Generate baseline Falco rules based on image analysis
+      cat > $(workspaces.reports.path)/falco-rules.yaml << 'EOF'
+      # InErgize Container Runtime Security Rules
+      # Generated for image: $(params.image-url)
+      
+      - rule: Unauthorized Process in Container
+        desc: Detect processes not in the allowed list
+        condition: >
+          spawned_process and
+          container and
+          not proc.name in (node, npm, bun, postgres, redis-server) and
+          not proc.name startswith "sh" and
+          not proc.name startswith "bash"
+        output: >
+          Unauthorized process started in container
+          (user=%user.name command=%proc.cmdline
+          container_id=%container.id container_name=%container.name
+          image=%container.image.repository:%container.image.tag)
+        priority: WARNING
+        tags: [container, process, security]
+      
+      - rule: Container Drift Detection
+        desc: Detect file modifications in container
+        condition: >
+          open_write and
+          container and
+          fd.typechar='f' and
+          not fd.directory in (/tmp, /var/tmp, /app/logs, /app/.cache) and
+          not proc.name in (node, npm, bun)
+        output: >
+          File modification detected in container
+          (user=%user.name command=%proc.cmdline
+          file=%fd.name container_id=%container.id
+          container_name=%container.name
+          image=%container.image.repository:%container.image.tag)
+        priority: WARNING
+        tags: [container, filesystem, drift]
+      
+      - rule: Network Connection from Container
+        desc: Monitor outbound network connections
+        condition: >
+          outbound and
+          container and
+          not fd.net.dport in (80, 443, 5432, 6379, 6380, 53) and
+          not fd.net.dip in (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+        output: >
+          Unexpected network connection from container
+          (user=%user.name command=%proc.cmdline
+          connection=%fd.net.sip:%fd.net.sport->%fd.net.dip:%fd.net.dport
+          container_id=%container.id container_name=%container.name
+          image=%container.image.repository:%container.image.tag)
+        priority: WARNING
+        tags: [container, network, suspicious]
+      
+      - rule: LinkedIn Service Compliance Violation
+        desc: Detect potential LinkedIn API abuse
+        condition: >
+          spawned_process and
+          container and
+          container.image.repository contains "linkedin-service" and
+          (proc.name in (curl, wget, python, ruby) or
+           proc.cmdline contains "linkedin.com" or
+           proc.cmdline contains "api.linkedin")
+        output: >
+          Potential LinkedIn API compliance violation
+          (user=%user.name command=%proc.cmdline
+          container_id=%container.id container_name=%container.name
+          image=%container.image.repository:%container.image.tag)
+        priority: CRITICAL
+        tags: [container, compliance, linkedin]
+      EOF
+      
+      # Generate compliance-specific rules based on level
+      if [ "$(params.compliance-level)" = "critical" ]; then
+        cat >> $(workspaces.reports.path)/falco-rules.yaml << 'EOF'
+      
+      - rule: Critical Service Privilege Escalation
+        desc: Detect privilege escalation attempts in critical services
+        condition: >
+          spawned_process and
+          container and
+          proc.name in (sudo, su, doas) and
+          container.image.repository in (auth-service, linkedin-service)
+        output: >
+          Privilege escalation attempt in critical service
+          (user=%user.name command=%proc.cmdline
+          container_id=%container.id container_name=%container.name
+          image=%container.image.repository:%container.image.tag)
+        priority: CRITICAL
+        tags: [container, privilege-escalation, critical]
+      EOF
+      fi
+      
+      # Generate runtime policy metrics
+      RULE_COUNT=$(grep -c "^- rule:" $(workspaces.reports.path)/falco-rules.yaml)
+      
+      cat > $(workspaces.reports.path)/runtime-policy-metrics.json << EOF
+      {
+        "image": "$(params.image-url)",
+        "compliance_level": "$(params.compliance-level)",
+        "scan_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+        "policy_generator": "falco",
+        "generated_rules": $RULE_COUNT,
+        "policy_file": "falco-rules.yaml"
+      }
+      EOF
+      
+      echo "Runtime security policy generation completed: $RULE_COUNT rules generated"
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+
+---
+# SBOM Generation Task
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: syft-sbom-generator
+  namespace: inergize-production
+  labels:
+    security.inergize.com/scanner: "sbom"
+spec:
+  params:
+  - name: image-url
+    type: string
+  
+  workspaces:
+  - name: source
+  - name: reports
+
+  steps:
+  - name: sbom-generation
+    image: anchore/syft:v0.90.0
+    imagePullPolicy: IfNotPresent
+    workingDir: $(workspaces.source.path)
+    script: |
+      #!/bin/sh
+      set -e
+      
+      echo "Generating Software Bill of Materials (SBOM) for $(params.image-url)"
+      
+      # Generate SBOM in multiple formats
+      syft $(params.image-url) \
+        -o spdx-json \
+        --file $(workspaces.reports.path)/sbom-spdx.json
+      
+      syft $(params.image-url) \
+        -o syft-json \
+        --file $(workspaces.reports.path)/sbom-syft.json
+      
+      syft $(params.image-url) \
+        -o cyclonedx-json \
+        --file $(workspaces.reports.path)/sbom-cyclonedx.json
+      
+      # Generate human-readable table
+      syft $(params.image-url) \
+        -o table \
+        --file $(workspaces.reports.path)/sbom-table.txt
+      
+      # Extract key metrics
+      PACKAGE_COUNT=$(jq '.artifacts | length' $(workspaces.reports.path)/sbom-syft.json)
+      NODE_PACKAGES=$(jq '.artifacts[] | select(.type=="npm") | .name' $(workspaces.reports.path)/sbom-syft.json | wc -l)
+      
+      cat > $(workspaces.reports.path)/sbom-metrics.json << EOF
+      {
+        "image": "$(params.image-url)",
+        "scan_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+        "sbom_generator": "syft",
+        "total_packages": $PACKAGE_COUNT,
+        "node_packages": $NODE_PACKAGES,
+        "formats_generated": ["spdx-json", "syft-json", "cyclonedx-json", "table"]
+      }
+      EOF
+      
+      echo "SBOM generation completed: $PACKAGE_COUNT packages cataloged"
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+
+---
+# Security Gate Decision Task
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: security-gate-decision
+  namespace: inergize-production
+  labels:
+    security.inergize.com/gate: "decision"
+spec:
+  params:
+  - name: severity-threshold
+    type: string
+    default: "HIGH"
+  - name: compliance-level
+    type: string
+    default: "enterprise"
+  
+  workspaces:
+  - name: reports
+
+  steps:
+  - name: security-gate
+    image: alpine:3.18
+    imagePullPolicy: IfNotPresent
+    workingDir: $(workspaces.reports.path)
+    script: |
+      #!/bin/sh
+      set -e
+      
+      echo "Evaluating security gate for deployment approval"
+      
+      # Install jq for JSON processing
+      apk add --no-cache jq
+      
+      # Initialize gate status
+      GATE_PASSED=true
+      GATE_REASONS=""
+      
+      # Check vulnerability scan results
+      if [ -f "vulnerability-metrics.json" ]; then
+        CRITICAL_VULNS=$(jq -r '.critical_vulnerabilities' vulnerability-metrics.json)
+        HIGH_VULNS=$(jq -r '.high_vulnerabilities' vulnerability-metrics.json)
+        
+        echo "Vulnerability scan results: Critical=$CRITICAL_VULNS, High=$HIGH_VULNS"
+        
+        # Critical vulnerabilities always block deployment
+        if [ "$CRITICAL_VULNS" -gt 0 ]; then
+          GATE_PASSED=false
+          GATE_REASONS="$GATE_REASONS; Critical vulnerabilities found: $CRITICAL_VULNS"
+        fi
+        
+        # High vulnerabilities block based on threshold
+        if [ "$(params.severity-threshold)" = "HIGH" ] && [ "$HIGH_VULNS" -gt 5 ]; then
+          GATE_PASSED=false
+          GATE_REASONS="$GATE_REASONS; Too many high vulnerabilities: $HIGH_VULNS > 5"
+        fi
+      else
+        GATE_PASSED=false
+        GATE_REASONS="$GATE_REASONS; Vulnerability scan results missing"
+      fi
+      
+      # Check Dockerfile security scan results
+      if [ -f "dockerfile-metrics.json" ]; then
+        DOCKERFILE_ERRORS=$(jq -r '.errors // 0' dockerfile-metrics.json)
+        
+        echo "Dockerfile scan results: Errors=$DOCKERFILE_ERRORS"
+        
+        if [ "$DOCKERFILE_ERRORS" -gt 0 ]; then
+          GATE_PASSED=false
+          GATE_REASONS="$GATE_REASONS; Dockerfile security errors found: $DOCKERFILE_ERRORS"
+        fi
+      fi
+      
+      # Check for secrets in scan results
+      if [ -f "trivy-secrets.json" ]; then
+        SECRET_COUNT=$(jq '.Results[]?.Secrets[]? | length' trivy-secrets.json 2>/dev/null || echo "0")
+        
+        echo "Secret scan results: Secrets=$SECRET_COUNT"
+        
+        if [ "$SECRET_COUNT" -gt 0 ]; then
+          GATE_PASSED=false
+          GATE_REASONS="$GATE_REASONS; Secrets detected in image: $SECRET_COUNT"
+        fi
+      fi
+      
+      # Generate security gate decision
+      cat > security-gate-decision.json << EOF
+      {
+        "gate_passed": $GATE_PASSED,
+        "gate_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+        "severity_threshold": "$(params.severity-threshold)",
+        "compliance_level": "$(params.compliance-level)",
+        "gate_reasons": "$GATE_REASONS",
+        "deployment_approved": $GATE_PASSED
+      }
+      EOF
+      
+      if [ "$GATE_PASSED" = "true" ]; then
+        echo "✅ Security gate PASSED - Deployment approved"
+        exit 0
+      else
+        echo "❌ Security gate FAILED - Deployment blocked"
+        echo "Reasons:$GATE_REASONS"
+        exit 1
+      fi
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+
+---
+# Security Report Uploader Task
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: security-report-uploader
+  namespace: inergize-production
+  labels:
+    security.inergize.com/uploader: "reports"
+spec:
+  params:
+  - name: image-url
+    type: string
+  
+  workspaces:
+  - name: reports
+
+  steps:
+  - name: upload-reports
+    image: curlimages/curl:8.3.0
+    imagePullPolicy: IfNotPresent
+    workingDir: $(workspaces.reports.path)
+    script: |
+      #!/bin/sh
+      set -e
+      
+      echo "Uploading security scan reports to Elasticsearch"
+      
+      ELASTICSEARCH_HOST="elasticsearch.monitoring.svc.cluster.local:9200"
+      INDEX_PREFIX="inergize-security-scans"
+      TIMESTAMP=$(date -u +%Y.%m.%d)
+      
+      # Upload vulnerability scan results
+      if [ -f "vulnerability-metrics.json" ]; then
+        curl -X POST \
+          "http://$ELASTICSEARCH_HOST/$INDEX_PREFIX-vulnerabilities-$TIMESTAMP/_doc" \
+          -H "Content-Type: application/json" \
+          -d @vulnerability-metrics.json
+        echo "Uploaded vulnerability scan results"
+      fi
+      
+      # Upload Dockerfile scan results
+      if [ -f "dockerfile-metrics.json" ]; then
+        curl -X POST \
+          "http://$ELASTICSEARCH_HOST/$INDEX_PREFIX-dockerfile-$TIMESTAMP/_doc" \
+          -H "Content-Type: application/json" \
+          -d @dockerfile-metrics.json
+        echo "Uploaded Dockerfile scan results"
+      fi
+      
+      # Upload SBOM metrics
+      if [ -f "sbom-metrics.json" ]; then
+        curl -X POST \
+          "http://$ELASTICSEARCH_HOST/$INDEX_PREFIX-sbom-$TIMESTAMP/_doc" \
+          -H "Content-Type: application/json" \
+          -d @sbom-metrics.json
+        echo "Uploaded SBOM metrics"
+      fi
+      
+      # Upload security gate decision
+      if [ -f "security-gate-decision.json" ]; then
+        curl -X POST \
+          "http://$ELASTICSEARCH_HOST/$INDEX_PREFIX-gate-decisions-$TIMESTAMP/_doc" \
+          -H "Content-Type: application/json" \
+          -d @security-gate-decision.json
+        echo "Uploaded security gate decision"
+      fi
+      
+      echo "All security reports uploaded successfully"
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+
+---
+# Hadolint Security Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hadolint-security-config
+  namespace: inergize-production
+  labels:
+    security.inergize.com/config: "dockerfile-scanner"
+data:
+  hadolint.yaml: |
+    # Hadolint Security-Focused Configuration
+    rules:
+      # Security Rules
+      DL3000:  # Use absolute WORKDIR
+        level: error
+      DL3001:  # Use --no-cache with apk add
+        level: error
+      DL3002:  # Last USER should not be root
+        level: error
+      DL3003:  # Use WORKDIR to switch directories
+        level: error
+      DL3004:  # Do not use sudo
+        level: error
+      DL3007:  # Use --no-cache with apt-get
+        level: error
+      DL3008:  # Pin versions in apt get install
+        level: warning
+      DL3009:  # Delete apt-get cache
+        level: error
+      DL3010:  # Use ADD for extracting archives only
+        level: error
+      DL3011:  # Valid port in EXPOSE
+        level: error
+      DL3020:  # Use COPY instead of ADD for files/folders
+        level: error
+      DL3025:  # Use arguments JSON notation for CMD and ENTRYPOINT
+        level: error
+      DL4001:  # Use --no-cache with wget or curl
+        level: error
+      DL4003:  # Multiple consecutive RUN instructions
+        level: warning
+      DL4006:  # Set SHELL option -o pipefail
+        level: error
+    
+    # Ignore specific rules if needed
+    ignored:
+      - DL3006  # Pin versions in FROM - handled by base image strategy
+    
+    # Format for security scanning
+    format: json
