@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Optimize font loading with font-display: swap */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url('/fonts/inter-var.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Fallback for browsers that don't support variable fonts */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {
@@ -29,15 +40,40 @@
 
 @layer base {
   html {
-    font-family: var(--font-family-sans);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    font-variation-settings: normal;
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
   
   body {
     @apply bg-gray-50 text-gray-900 antialiased;
+    min-height: 100vh;
+    overflow-x: hidden;
   }
   
   * {
     @apply border-gray-200;
+  }
+  
+  /* Optimize focus indicators for accessibility */
+  *:focus-visible {
+    @apply outline-2 outline-offset-2 outline-blue-500;
+  }
+  
+  /* Prefers reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
@@ -92,5 +128,84 @@
   
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+  
+  /* Performance optimizations */
+  .gpu-accelerated {
+    transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .contain-layout {
+    contain: layout;
+  }
+  
+  .contain-paint {
+    contain: paint;
+  }
+  
+  .contain-strict {
+    contain: strict;
+  }
+  
+  /* Loading states */
+  .skeleton {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+  }
+  
+  @keyframes loading {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+  
+  /* Toast container optimization */
+  .toast-container {
+    pointer-events: none;
+  }
+  
+  .toast-container > div {
+    pointer-events: auto;
+  }
+  
+  /* Mobile-first responsive utilities */
+  .safe-area-inset-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  /* Custom scrollbar for webkit browsers */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+  }
+  
+  /* Dark mode support */
+  @media (prefers-color-scheme: dark) {
+    .auto-dark {
+      color-scheme: dark;
+    }
   }
 }
