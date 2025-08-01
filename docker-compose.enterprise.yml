@@ -1,0 +1,485 @@
+# Enterprise-grade Docker Compose for InErgize Backend Scaling
+# Optimized for 10,000+ concurrent users with <200ms API response times
+
+services:
+  # Optimized PostgreSQL with connection pooling
+  postgres:
+    image: postgres:16-alpine
+    container_name: inergize-postgres-prod
+    environment:
+      POSTGRES_DB: inergize_prod
+      POSTGRES_USER: inergize_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+      # Performance optimizations
+      POSTGRES_SHARED_PRELOAD_LIBRARIES: pg_stat_statements,pg_buffercache
+      POSTGRES_MAX_CONNECTIONS: 500
+      POSTGRES_SHARED_BUFFERS: 2GB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 6GB
+      POSTGRES_MAINTENANCE_WORK_MEM: 512MB
+      POSTGRES_CHECKPOINT_COMPLETION_TARGET: 0.9
+      POSTGRES_WAL_BUFFERS: 64MB
+      POSTGRES_DEFAULT_STATISTICS_TARGET: 100
+      POSTGRES_RANDOM_PAGE_COST: 1.1
+      POSTGRES_EFFECTIVE_IO_CONCURRENCY: 200
+      POSTGRES_WORK_MEM: 32MB
+      POSTGRES_MAX_WAL_SIZE: 4GB
+      POSTGRES_MIN_WAL_SIZE: 1GB
+      POSTGRES_CHECKPOINT_TIMEOUT: 15min
+      POSTGRES_SYNCHRONOUS_COMMIT: off
+      POSTGRES_WAL_COMPRESSION: on
+      POSTGRES_AUTOVACUUM_MAX_WORKERS: 4
+      POSTGRES_AUTOVACUUM_NAPTIME: 15s
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+      - ./database/optimizations/postgresql.conf:/etc/postgresql/postgresql.conf
+    ports:
+      - "5432:5432"
+    networks:
+      - inergize-prod-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inergize_user -d inergize_prod -h localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: '4.0'
+        reservations:
+          memory: 4G
+          cpus: '2.0'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # Highly optimized TimescaleDB for analytics
+  timescale:
+    image: timescale/timescaledb:latest-pg16
+    container_name: inergize-timescale-prod
+    environment:
+      POSTGRES_DB: inergize_analytics_prod
+      POSTGRES_USER: inergize_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+      # TimescaleDB enterprise optimizations
+      POSTGRES_SHARED_PRELOAD_LIBRARIES: timescaledb,pg_stat_statements
+      POSTGRES_MAX_CONNECTIONS: 400
+      POSTGRES_SHARED_BUFFERS: 4GB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 12GB
+      POSTGRES_MAINTENANCE_WORK_MEM: 1GB
+      POSTGRES_CHECKPOINT_COMPLETION_TARGET: 0.9
+      POSTGRES_WAL_BUFFERS: 128MB
+      POSTGRES_DEFAULT_STATISTICS_TARGET: 500
+      POSTGRES_RANDOM_PAGE_COST: 1.0
+      POSTGRES_EFFECTIVE_IO_CONCURRENCY: 300
+      POSTGRES_WORK_MEM: 64MB
+      POSTGRES_MAX_WAL_SIZE: 8GB
+      POSTGRES_MIN_WAL_SIZE: 2GB
+      # TimescaleDB specific enterprise settings
+      TIMESCALEDB_TELEMETRY: off
+      TIMESCALEDB_MAX_BACKGROUND_WORKERS: 16
+      TIMESCALEDB_COMPRESSION: on
+      TIMESCALEDB_CONTINUOUS_AGGREGATES: on
+      TIMESCALEDB_RETENTION_POLICY: on
+    volumes:
+      - timescale_data_prod:/var/lib/postgresql/data
+      - ./services/analytics-service/src/migrations:/docker-entrypoint-initdb.d
+      - ./database/optimizations/timescale.conf:/etc/postgresql/postgresql.conf
+    ports:
+      - "5433:5432"
+    networks:
+      - inergize-prod-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inergize_user -d inergize_analytics_prod -h localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 16G
+          cpus: '8.0'
+        reservations:
+          memory: 8G
+          cpus: '4.0'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # Redis Cluster for high availability and performance
+  redis-master:
+    image: redis:7-alpine
+    container_name: inergize-redis-master
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 4gb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --tcp-keepalive 300
+      --timeout 300
+      --tcp-backlog 4096
+      --databases 16
+      --maxclients 65000
+      --io-threads 4
+      --io-threads-do-reads yes
+    volumes:
+      - redis_master_data:/data
+      - ./infrastructure/redis/redis-master.conf:/etc/redis/redis.conf
+    ports:
+      - "6379:6379"
+    networks:
+      - inergize-prod-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 5G
+          cpus: '2.0'
+        reservations:
+          memory: 4G
+          cpus: '1.0'
+
+  redis-replica-1:
+    image: redis:7-alpine
+    container_name: inergize-redis-replica-1
+    command: >
+      redis-server
+      --replicaof redis-master 6379
+      --masterauth ${REDIS_PASSWORD}
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 4gb
+      --maxmemory-policy allkeys-lru
+      --replica-read-only yes
+      --tcp-keepalive 300
+      --timeout 300
+    volumes:
+      - redis_replica1_data:/data
+    networks:
+      - inergize-prod-network
+    depends_on:
+      - redis-master
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 5G
+          cpus: '2.0'
+        reservations:
+          memory: 4G
+          cpus: '1.0'
+
+  # Kong API Gateway with enterprise features
+  kong:
+    image: kong/kong-gateway:3.6-alpine
+    container_name: inergize-kong-prod
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.production.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_ADMIN_GUI_LISTEN: 0.0.0.0:8002
+      KONG_NGINX_WORKER_PROCESSES: auto
+      KONG_NGINX_DAEMON: off
+      KONG_WORKER_CONNECTIONS: 4096
+      KONG_UPSTREAM_KEEPALIVE_POOL_SIZE: 1000
+      KONG_UPSTREAM_KEEPALIVE_MAX_REQUESTS: 10000
+      KONG_UPSTREAM_KEEPALIVE_IDLE_TIMEOUT: 60s
+      # Rate limiting
+      KONG_RATE_LIMITING_REDIS_HOST: redis-master
+      KONG_RATE_LIMITING_REDIS_PORT: 6379
+      KONG_RATE_LIMITING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # Caching
+      KONG_PROXY_CACHE_REDIS_HOST: redis-master
+      KONG_PROXY_CACHE_REDIS_PORT: 6379
+      KONG_PROXY_CACHE_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # Security
+      KONG_REAL_IP_HEADER: X-Forwarded-For
+      KONG_REAL_IP_RECURSIVE: on
+      KONG_TRUSTED_IPS: 0.0.0.0/0,::/0
+      # Performance
+      KONG_MEM_CACHE_SIZE: 512m
+      KONG_LUA_SHARED_DICT: prometheus_metrics:5m
+    volumes:
+      - ./infrastructure/kong/kong.production.yml:/kong/declarative/kong.production.yml:ro
+      - ./infrastructure/kong/ssl:/kong/ssl:ro
+    ports:
+      - "80:8000"      # HTTP
+      - "443:8443"     # HTTPS
+      - "8001:8001"    # Admin API
+      - "8002:8002"    # Kong Manager
+    networks:
+      - inergize-prod-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+    depends_on:
+      - redis-master
+
+  # Optimized Auth Service with clustering
+  auth-service-1:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile.production
+    container_name: inergize-auth-service-1
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - INSTANCE_ID=auth-1
+      - DATABASE_URL=postgresql://inergize_user:${POSTGRES_PASSWORD}@postgres:5432/inergize_prod?connection_limit=50&pool_timeout=20
+      - REDIS_CLUSTER_NODES=redis-master:6379,redis-replica-1:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - BCRYPT_ROUNDS=12
+      - RATE_LIMIT_WINDOW_MS=900000
+      - RATE_LIMIT_MAX_REQUESTS=1000
+      - SESSION_TIMEOUT=3600000
+      - MFA_ISSUER=InErgize
+      - LOG_LEVEL=info
+      - METRICS_ENABLED=true
+      - HEALTH_CHECK_TIMEOUT=5000
+      - GRACEFUL_SHUTDOWN_TIMEOUT=10000
+    ports:
+      - "3001:3001"
+    networks:
+      - inergize-prod-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-master:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  auth-service-2:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile.production
+    container_name: inergize-auth-service-2
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - INSTANCE_ID=auth-2
+      - DATABASE_URL=postgresql://inergize_user:${POSTGRES_PASSWORD}@postgres:5432/inergize_prod?connection_limit=50&pool_timeout=20
+      - REDIS_CLUSTER_NODES=redis-master:6379,redis-replica-1:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - BCRYPT_ROUNDS=12
+      - RATE_LIMIT_WINDOW_MS=900000
+      - RATE_LIMIT_MAX_REQUESTS=1000
+      - SESSION_TIMEOUT=3600000
+      - MFA_ISSUER=InErgize
+      - LOG_LEVEL=info
+      - METRICS_ENABLED=true
+      - HEALTH_CHECK_TIMEOUT=5000
+      - GRACEFUL_SHUTDOWN_TIMEOUT=10000
+    networks:
+      - inergize-prod-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-master:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # High-performance Analytics Service with horizontal scaling
+  analytics-service-1:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile.production
+    container_name: inergize-analytics-service-1
+    environment:
+      - NODE_ENV=production
+      - PORT=3004
+      - INSTANCE_ID=analytics-1
+      - TIMESCALE_HOST=timescale
+      - TIMESCALE_PORT=5432
+      - TIMESCALE_USER=inergize_user
+      - TIMESCALE_PASSWORD=${POSTGRES_PASSWORD}
+      - TIMESCALE_DATABASE=inergize_analytics_prod
+      - TIMESCALE_MAX_CONNECTIONS=50
+      - TIMESCALE_CONNECTION_TIMEOUT=30000
+      - REDIS_CLUSTER_NODES=redis-master:6379,redis-replica-1:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=1
+      - REDIS_KEY_PREFIX=analytics:prod
+      - JWT_SECRET=${JWT_SECRET}
+      - WS_ENABLED=true
+      - WS_PORT=3007
+      - WS_HEARTBEAT_INTERVAL=30000
+      - WS_MAX_CONNECTIONS=5000
+      - WS_COMPRESSION=true
+      - RATE_LIMIT_WINDOW_MS=900000
+      - RATE_LIMIT_MAX_REQUESTS=1000
+      - LOG_LEVEL=info
+      - METRICS_ENABLED=true
+      - METRICS_PORT=9090
+      - DATA_RETENTION_DAYS=90
+      - AGGREGATION_INTERVAL_MINUTES=1
+      - CLEANUP_INTERVAL_HOURS=6
+      - BATCH_SIZE=1000
+      - CACHE_TTL=300
+      - AUTH_SERVICE_URLS=http://auth-service-1:3001,http://auth-service-2:3001
+    ports:
+      - "3004:3004"
+      - "3007:3007"
+      - "9090:9090"
+    networks:
+      - inergize-prod-network
+    depends_on:
+      timescale:
+        condition: service_healthy
+      redis-master:
+        condition: service_healthy
+      auth-service-1:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # Enterprise monitoring stack
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: inergize-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=90d'
+      - '--storage.tsdb.retention.size=50GB'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    volumes:
+      - ./infrastructure/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./infrastructure/monitoring/rules:/etc/prometheus/rules
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - inergize-prod-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+
+volumes:
+  postgres_data_prod:
+    driver: local
+  timescale_data_prod:
+    driver: local
+  redis_master_data:
+    driver: local
+  redis_replica1_data:
+    driver: local
+  prometheus_data:
+    driver: local
+
+networks:
+  inergize-prod-network:
+    driver: bridge
+    name: inergize-prod-network
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

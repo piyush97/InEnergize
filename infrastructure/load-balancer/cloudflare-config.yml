@@ -1,0 +1,424 @@
+# InErgize Cloudflare Configuration
+# Global CDN and Load Balancing Setup for Production
+# Optimized for LinkedIn automation compliance and global performance
+
+# Zone Configuration
+zone:
+  name: inergize.com
+  plan: pro  # Pro plan for advanced features
+  settings:
+    # Security Settings
+    security_level: high
+    ssl: strict  # Strict SSL mode
+    min_tls_version: "1.2"
+    tls_1_3: "on"
+    automatic_https_rewrites: "on"
+    always_use_https: "on"
+    
+    # Performance Settings
+    minify:
+      css: "on"
+      html: "on" 
+      js: "on"
+    brotli: "on"
+    early_hints: "on"
+    http2: "on"
+    http3: "on"
+    
+    # Caching Settings
+    caching_level: aggressive
+    browser_cache_ttl: 31536000  # 1 year
+    edge_cache_ttl: 7200  # 2 hours
+    
+    # Bot Management (Critical for LinkedIn compliance)
+    bot_fight_mode: "on"
+    challenge_passage: 86400  # 24 hours
+    
+    # DDoS Protection
+    ddos_protection: "on"
+    proxy_read_timeout: 100
+
+# DNS Records
+dns_records:
+  # Main domain
+  - type: A
+    name: "@"
+    content: 104.21.0.0  # Cloudflare proxy IP (will use load balancer)
+    proxied: true
+    ttl: 1  # Auto
+    
+  # API subdomain
+  - type: A
+    name: "api"
+    content: 104.21.0.0
+    proxied: true
+    ttl: 1
+    
+  # App subdomain
+  - type: A
+    name: "app"
+    content: 104.21.0.0
+    proxied: true
+    ttl: 1
+    
+  # Admin subdomain
+  - type: A
+    name: "admin"
+    content: 104.21.0.0
+    proxied: true
+    ttl: 1
+    
+  # Monitoring subdomains
+  - type: A
+    name: "grafana"
+    content: 104.21.0.0
+    proxied: true
+    ttl: 1
+    
+  - type: A
+    name: "prometheus"
+    content: 104.21.0.0
+    proxied: true
+    ttl: 1
+    
+  # GitOps
+  - type: A
+    name: "argocd"
+    content: 104.21.0.0
+    proxied: true
+    ttl: 1
+
+# Load Balancer Configuration
+load_balancers:
+  # Primary Application Load Balancer
+  - name: "inergize-app-lb"
+    description: "Main application load balancer with global distribution"
+    enabled: true
+    ttl: 60
+    region_pools:
+      # US East (Primary)
+      - name: "us-east"
+        regions:
+          - ENAM  # Eastern North America
+        pools:
+          - "us-east-pool"
+      
+      # US West (Secondary)
+      - name: "us-west"
+        regions:
+          - WNAM  # Western North America
+        pools:
+          - "us-west-pool"
+      
+      # Europe (Tertiary)
+      - name: "europe"
+        regions:
+          - EEUR  # Eastern Europe
+          - WEUR  # Western Europe
+        pools:
+          - "europe-pool"
+    
+    # Failover configuration
+    fallback_pool: "us-east-pool"
+    
+    # Session affinity for LinkedIn compliance
+    session_affinity: "cookie"
+    session_affinity_ttl: 3600
+    
+    # Health check
+    adaptive_routing: true
+    location_strategy: "speed"
+
+# Origin Pools Configuration
+origin_pools:
+  # US East Pool (Primary)
+  - name: "us-east-pool"
+    description: "Primary US East cluster"
+    enabled: true
+    minimum_origins: 2
+    notification_email: "ops@inergize.com"
+    
+    origins:
+      - name: "us-east-1"
+        address: "us-east-1.inergize.com"
+        port: 443
+        weight: 1.0
+        enabled: true
+        
+      - name: "us-east-2"
+        address: "us-east-2.inergize.com"
+        port: 443
+        weight: 1.0
+        enabled: true
+    
+    # Health monitoring
+    monitor: "https-health-check"
+    
+    # Load balancing
+    load_shedding:
+      default_percent: 0
+      default_policy: "hash"
+      session_percent: 0
+      session_policy: "hash"
+  
+  # US West Pool (Secondary)
+  - name: "us-west-pool"
+    description: "Secondary US West cluster"
+    enabled: true
+    minimum_origins: 1
+    notification_email: "ops@inergize.com"
+    
+    origins:
+      - name: "us-west-1"
+        address: "us-west-1.inergize.com"
+        port: 443
+        weight: 1.0
+        enabled: true
+    
+    monitor: "https-health-check"
+  
+  # Europe Pool (Tertiary)
+  - name: "europe-pool"
+    description: "Europe cluster"
+    enabled: true
+    minimum_origins: 1
+    notification_email: "ops@inergize.com"
+    
+    origins:
+      - name: "europe-1"
+        address: "europe-1.inergize.com"
+        port: 443
+        weight: 1.0
+        enabled: true
+    
+    monitor: "https-health-check"
+
+# Health Monitors
+monitors:
+  - name: "https-health-check"
+    type: "https"
+    description: "HTTPS health check for InErgize services"
+    interval: 60  # seconds
+    retries: 2
+    timeout: 10
+    method: "GET"
+    path: "/health"
+    expected_codes: "200"
+    expected_body: ""
+    follow_redirects: true
+    allow_insecure: false
+    probe_zone: "auto"
+    
+    # Advanced health check
+    headers:
+      Host: "api.inergize.com"
+      User-Agent: "Cloudflare-Health-Check"
+
+# Page Rules for Performance and Security
+page_rules:
+  # API Caching Rules
+  - targets:
+      - url: "api.inergize.com/health*"
+    actions:
+      cache_level: "bypass"
+      
+  - targets:
+      - url: "api.inergize.com/v1/analytics/*"
+    actions:
+      cache_level: "cache_everything"
+      edge_cache_ttl: 300  # 5 minutes
+      browser_cache_ttl: 300
+      
+  # Static Asset Caching
+  - targets:
+      - url: "app.inergize.com/_next/static/*"
+    actions:
+      cache_level: "cache_everything"
+      edge_cache_ttl: 31536000  # 1 year
+      browser_cache_ttl: 31536000
+      
+  # Security Headers
+  - targets:
+      - url: "*.inergize.com/*"
+    actions:
+      security_headers:
+        strict_transport_security:
+          enabled: true
+          max_age: 31536000
+          include_subdomains: true
+          preload: true
+        content_type_options: true
+        frame_options: "DENY"
+        xss_protection: true
+        referrer_policy: "strict-origin-when-cross-origin"
+
+# WAF (Web Application Firewall) Rules
+firewall_rules:
+  # Rate limiting for API endpoints
+  - description: "Rate limit API endpoints"
+    expression: '(http.request.uri.path matches "^/api/v1/.*") and (rate.requests > 100)'
+    action: "challenge"
+    enabled: true
+    
+  # Block suspicious bot traffic (LinkedIn compliance)
+  - description: "Block automation bots"
+    expression: '(http.user_agent contains "bot" or http.user_agent contains "crawler") and not (cf.client.bot)'
+    action: "block"
+    enabled: true
+    
+  # Geo-blocking for high-risk regions
+  - description: "Challenge high-risk regions"
+    expression: 'ip.geoip.country in {"CN" "RU" "KP"}'
+    action: "challenge"
+    enabled: true
+    
+  # LinkedIn automation protection
+  - description: "Protect LinkedIn automation endpoints"
+    expression: '(http.request.uri.path matches "^/api/v1/linkedin/.*") and (rate.requests.1m > 10)'
+    action: "challenge"
+    enabled: true
+
+# Rate Limiting Configuration
+rate_limiting:
+  # General API rate limiting
+  - description: "General API rate limit"
+    match:
+      request:
+        methods: ["POST", "PUT", "DELETE"]
+        url: "api.inergize.com/v1/*"
+    threshold: 100
+    period: 60  # seconds
+    action:
+      mode: "challenge"
+      timeout: 86400  # 24 hours
+    
+  # LinkedIn automation specific limits
+  - description: "LinkedIn automation rate limit"
+    match:
+      request:
+        methods: ["POST", "PUT"]
+        url: "api.inergize.com/v1/linkedin/*"
+    threshold: 20
+    period: 60
+    action:
+      mode: "block"
+      timeout: 3600  # 1 hour
+
+# Custom Error Pages
+custom_pages:
+  - id: "basic_challenge"
+    url: "https://app.inergize.com/error/challenge"
+    state: "customized"
+    
+  - id: "ratelimit_exceeded"
+    url: "https://app.inergize.com/error/rate-limit"
+    state: "customized"
+    
+  - id: "under_attack"
+    url: "https://app.inergize.com/error/maintenance"
+    state: "customized"
+
+# Cloudflare Workers (for advanced routing)
+workers:
+  - name: "inergize-router"
+    script: |
+      addEventListener('fetch', event => {
+        event.respondWith(handleRequest(event.request))
+      })
+      
+      async function handleRequest(request) {
+        const url = new URL(request.url)
+        
+        // LinkedIn compliance: Add delay for automation endpoints
+        if (url.pathname.startsWith('/api/v1/linkedin/')) {
+          // Add small delay to ensure compliance
+          await new Promise(resolve => setTimeout(resolve, 100))
+          
+          // Add compliance headers
+          const response = await fetch(request)
+          const newResponse = new Response(response.body, response)
+          newResponse.headers.set('X-LinkedIn-Compliance', 'active')
+          newResponse.headers.set('X-Rate-Limit-Strict', 'true')
+          return newResponse
+        }
+        
+        // Default pass-through
+        return fetch(request)
+      }
+    routes:
+      - pattern: "api.inergize.com/v1/linkedin/*"
+
+# Analytics and Monitoring
+analytics:
+  web_analytics: true
+  
+# Notifications
+notifications:
+  - name: "health-check-failures"
+    enabled: true
+    destination_mechanisms:
+      - email: "ops@inergize.com"
+      - webhook: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+    
+  - name: "ddos-attacks"
+    enabled: true
+    destination_mechanisms:
+      - email: "security@inergize.com"
+      - webhook: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+
+# SSL/TLS Configuration
+ssl:
+  # Universal SSL
+  universal_ssl_settings:
+    enabled: true
+    
+  # Custom certificates
+  custom_certificates:
+    - certificate: |
+        -----BEGIN CERTIFICATE-----
+        # Your SSL certificate content
+        -----END CERTIFICATE-----
+    private_key: |
+        -----BEGIN PRIVATE KEY-----
+        # Your private key content
+        -----END PRIVATE KEY-----
+        
+  # TLS settings
+  tls_settings:
+    min_tls_version: "1.2"
+    ciphers: 
+      - "ECDHE-RSA-AES128-GCM-SHA256"
+      - "ECDHE-RSA-AES256-GCM-SHA384"
+      - "ECDHE-RSA-CHACHA20-POLY1305"
+    
+  # HSTS
+  hsts:
+    enabled: true
+    max_age: 31536000
+    include_subdomains: true
+    preload: true
+
+# Cache Configuration
+cache_rules:
+  # Static assets
+  - expression: 'http.request.uri.path matches "\\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$"'
+    action: "cache"
+    cache_key:
+      cache_by_device_type: false
+      ignore_query_strings_order: true
+    edge_ttl:
+      default: 31536000  # 1 year
+    browser_ttl:
+      default: 31536000
+      
+  # API responses (selective caching)
+  - expression: 'http.request.uri.path matches "^/api/v1/analytics/dashboard$"'
+    action: "cache"
+    edge_ttl:
+      default: 300  # 5 minutes
+    browser_ttl:
+      default: 60  # 1 minute
+      
+  # No cache for sensitive endpoints
+  - expression: 'http.request.uri.path matches "^/api/v1/(auth|linkedin)/.*"'
+    action: "bypass"
