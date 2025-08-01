@@ -1,4 +1,6 @@
 import { config } from 'dotenv';
+import { PerformanceProfiler } from '../utils/performance-profiler';
+import { MemoryMonitor } from '../utils/memory-monitor';
 
 // Load environment variables from .env.test file
 config({ path: '.env.test' });
@@ -27,7 +29,27 @@ beforeAll(async () => {
   process.env.JWT_SECRET = 'test-jwt-secret-for-testing-only';
   process.env.BCRYPT_SALT_ROUNDS = '4'; // Lower for faster tests
   
-  console.log('🧪 Jest global setup completed');
+  // AI Model Testing Configuration
+  process.env.AI_MODEL_TEST_MODE = 'true';
+  process.env.MOCK_OPENAI_RESPONSES = 'true';
+  process.env.MOCK_ANTHROPIC_RESPONSES = 'true';
+  
+  // LinkedIn Compliance Testing Configuration
+  process.env.LINKEDIN_COMPLIANCE_TEST_MODE = 'true';
+  process.env.ULTRA_CONSERVATIVE_LIMITS = 'true';
+  process.env.SAFETY_MONITORING_ENABLED = 'true';
+  
+  // Performance Testing Configuration
+  process.env.PERFORMANCE_MONITORING_ENABLED = 'true';
+  process.env.MEMORY_MONITORING_ENABLED = 'true';
+  process.env.PERFORMANCE_TEST_TIMEOUT = '120000'; // 2 minutes
+  
+  // Team Collaboration Testing Configuration
+  process.env.WEBSOCKET_TEST_MODE = 'true';
+  process.env.MOCK_WEBSOCKET_SERVER = 'true';
+  process.env.REAL_TIME_FEATURES_TEST_MODE = 'true';
+  
+  console.log('🧪 Jest global setup completed with comprehensive testing framework');
 });
 
 // Global test teardown
@@ -64,6 +86,69 @@ global.testHelpers = {
   randomNumber: (min: number = 0, max: number = 100): number => {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   },
+  
+  // Performance testing helpers
+  createPerformanceProfiler: (): PerformanceProfiler => {
+    return new PerformanceProfiler();
+  },
+  
+  createMemoryMonitor: (): MemoryMonitor => {
+    return new MemoryMonitor();
+  },
+  
+  // AI model testing helpers
+  mockAIResponse: (accuracy: number = 0.85): any => {
+    return {
+      prediction: Math.random() > (1 - accuracy) ? 'correct' : 'incorrect',
+      confidence: accuracy + (Math.random() * 0.1 - 0.05),
+      latency: Math.random() * 200 + 50, // 50-250ms
+      tokens: Math.floor(Math.random() * 1000 + 100)
+    };
+  },
+  
+  // LinkedIn compliance testing helpers
+  mockLinkedInRateLimit: (action: string): any => {
+    const limits = {
+      CONNECTION_REQUESTS_DAILY: 15,
+      LIKES_DAILY: 30,
+      COMMENTS_DAILY: 8,
+      PROFILE_VIEWS_DAILY: 25,
+      FOLLOWS_DAILY: 5,
+      MESSAGES_DAILY: 15
+    };
+    
+    return {
+      action,
+      limit: limits[action as keyof typeof limits] || 10,
+      remaining: Math.floor(Math.random() * 10),
+      resetTime: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
+    };
+  },
+  
+  // WebSocket testing helpers
+  mockWebSocketMessage: (type: string, data: any = {}): any => {
+    return {
+      type,
+      timestamp: Date.now(),
+      userId: `user-${Math.random().toString(36).substring(7)}`,
+      sessionId: `session-${Math.random().toString(36).substring(7)}`,
+      data
+    };
+  },
+  
+  // Team collaboration testing helpers
+  mockCollaborativeEdit: (templateId: string = 'template-123'): any => {
+    return {
+      templateId,
+      operation: {
+        type: Math.random() > 0.5 ? 'insert' : 'delete',
+        position: Math.floor(Math.random() * 1000),
+        content: `Test edit ${Date.now()}`,
+        userId: `user-${Math.random().toString(36).substring(7)}`
+      },
+      timestamp: Date.now()
+    };
+  }
 };
 
 // Extend Jest matchers
@@ -110,6 +195,97 @@ expect.extend({
     } else {
       return {
         message: () => `expected ${received} to be a valid JWT`,
+        pass: false,
+      };
+    }
+  },
+  
+  // AI Model Testing Matchers
+  toMeetAccuracyThreshold(received: number, threshold: number = 0.85) {
+    const pass = received >= threshold;
+    if (pass) {
+      return {
+        message: () => `expected accuracy ${received} not to meet threshold ${threshold}`,
+        pass: true,
+      };
+    } else {
+      return {
+        message: () => `expected accuracy ${received} to meet threshold ${threshold}`,
+        pass: false,
+      };
+    }
+  },
+  
+  toBeBiasFree(received: any, threshold: number = 0.05) {
+    const biasScore = received.biasScore || received;
+    const pass = typeof biasScore === 'number' && biasScore <= threshold;
+    if (pass) {
+      return {
+        message: () => `expected bias score ${biasScore} to exceed threshold ${threshold}`,
+        pass: true,
+      };
+    } else {
+      return {
+        message: () => `expected bias score ${biasScore} to be below threshold ${threshold}`,
+        pass: false,
+      };
+    }
+  },
+  
+  // Performance Testing Matchers
+  toMeetLatencyThreshold(received: number, threshold: number = 200) {
+    const pass = received <= threshold;
+    if (pass) {
+      return {
+        message: () => `expected latency ${received}ms not to meet threshold ${threshold}ms`,
+        pass: true,
+      };
+    } else {
+      return {
+        message: () => `expected latency ${received}ms to meet threshold ${threshold}ms`,
+        pass: false,
+      };
+    }
+  },
+  
+  toMeetThroughputThreshold(received: number, threshold: number = 100) {
+    const pass = received >= threshold;
+    if (pass) {
+      return {
+        message: () => `expected throughput ${received} RPS not to meet threshold ${threshold} RPS`,
+        pass: true,
+      };
+    } else {
+      return {
+        message: () => `expected throughput ${received} RPS to meet threshold ${threshold} RPS`,
+        pass: false,
+      };
+    }
+  },
+  
+  // LinkedIn Compliance Testing Matchers
+  toRespectRateLimit(received: any, action: string) {
+    const limits = {
+      CONNECTION_REQUESTS_DAILY: 15,
+      LIKES_DAILY: 30,
+      COMMENTS_DAILY: 8,
+      PROFILE_VIEWS_DAILY: 25,
+      FOLLOWS_DAILY: 5,
+      MESSAGES_DAILY: 15
+    };
+    
+    const limit = limits[action as keyof typeof limits];
+    const count = received.count || received;
+    const pass = count <= limit;
+    
+    if (pass) {
+      return {
+        message: () => `expected ${action} count ${count} not to respect limit ${limit}`,
+        pass: true,
+      };
+    } else {
+      return {
+        message: () => `expected ${action} count ${count} to respect limit ${limit}`,
         pass: false,
       };
     }
@@ -214,6 +390,12 @@ declare global {
     randomString: (length?: number) => string;
     randomEmail: () => string;
     randomNumber: (min?: number, max?: number) => number;
+    createPerformanceProfiler: () => PerformanceProfiler;
+    createMemoryMonitor: () => MemoryMonitor;
+    mockAIResponse: (accuracy?: number) => any;
+    mockLinkedInRateLimit: (action: string) => any;
+    mockWebSocketMessage: (type: string, data?: any) => any;
+    mockCollaborativeEdit: (templateId?: string) => any;
   };
   
   namespace jest {
@@ -221,6 +403,11 @@ declare global {
       toBeValidDate(): R;
       toBeValidEmail(): R;
       toBeValidJWT(): R;
+      toMeetAccuracyThreshold(threshold?: number): R;
+      toBeBiasFree(threshold?: number): R;
+      toMeetLatencyThreshold(threshold?: number): R;
+      toMeetThroughputThreshold(threshold?: number): R;
+      toRespectRateLimit(action: string): R;
     }
   }
 }
