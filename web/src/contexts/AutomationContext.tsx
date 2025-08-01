@@ -207,7 +207,9 @@ export function AutomationProvider({ children, userId, subscriptionTier }: Autom
 
   // WebSocket configuration based on subscription tier
   const wsConfig = useMemo(() => ({
-    url: `${process.env.NODE_ENV === 'production' ? 'wss:' : 'ws:'}//${window.location.hostname}:3007/automation/${userId}`,
+    url: typeof window !== 'undefined' 
+      ? `${process.env.NODE_ENV === 'production' ? 'wss:' : 'ws:'}//${window.location.hostname}:3007/automation/${userId}`
+      : '',
     reconnect: true,
     reconnectAttempts: subscriptionTier === 'enterprise' ? 10 : 5,
     reconnectInterval: subscriptionTier === 'enterprise' ? 1000 : 3000,
