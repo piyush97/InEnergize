@@ -7,6 +7,7 @@ import { collectDefaultMetrics, register } from 'prom-client';
 import winston from 'winston';
 import aiRoutes from './routes/ai.routes';
 import { createBannerRoutes } from './routes/banner.routes';
+import aiEnhancementRoutes from './routes/aiEnhancement.routes';
 import { OpenAIService } from './services/openai.service';
 import { AIServiceConfig } from './types';
 
@@ -143,7 +144,10 @@ app.get('/', (req, res) => {
         health: '/health',
         metrics: '/metrics',
         capabilities: '/capabilities',
-        usage: '/usage'
+        usage: '/usage',
+        aiBasic: '/api/v1/ai',
+        aiEnhanced: '/api/v1/ai/enhanced',
+        bannerGeneration: '/api/v1/banner'
       },
       documentation: 'https://docs.inergize.com/ai-service'
     }
@@ -169,6 +173,7 @@ const bannerRoutes = createBannerRoutes(openaiService, aiConfig);
 // API routes
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/banner', bannerRoutes);
+app.use('/api/v1/ai/enhanced', aiEnhancementRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

@@ -100,6 +100,79 @@ router.post('/custom-prompt',
   aiController.customPrompt.bind(aiController)
 );
 
+// ML and AI Enhancement Routes (PRO+)
+router.post('/automation-safety-score',
+  aiSpecificRateLimit,
+  aiRateLimit,
+  requireSubscription('PRO'),
+  aiController.generateAutomationSafetyScore.bind(aiController)
+);
+
+router.post('/predict-engagement',
+  aiSpecificRateLimit,
+  aiRateLimit,
+  requireSubscription('PRO'),
+  aiController.predictEngagement.bind(aiController)
+);
+
+router.post('/optimize-content-advanced',
+  aiSpecificRateLimit,
+  aiRateLimit,
+  requireSubscription('PRO'),
+  aiController.optimizeContentAdvanced.bind(aiController)
+);
+
+router.post('/analyze-profile-image',
+  aiSpecificRateLimit,
+  aiRateLimit,
+  requireSubscription('PRO'),
+  aiController.analyzeProfileImage.bind(aiController)
+);
+
+router.post('/sentiment-analysis',
+  aiSpecificRateLimit,
+  aiRateLimit,
+  requireSubscription('BASIC'),
+  aiController.performSentimentAnalysis.bind(aiController)
+);
+
+// Advanced Recommendation Engine (PRO+)
+router.post('/connection-recommendations',
+  aiSpecificRateLimit,
+  aiRateLimit,
+  requireSubscription('PRO'),
+  aiController.generateConnectionRecommendations.bind(aiController)
+);
+
+router.post('/content-recommendations',
+  aiSpecificRateLimit,
+  aiRateLimit,
+  requireSubscription('PRO'),
+  aiController.generateContentRecommendations.bind(aiController)
+);
+
+router.post('/growth-plan',
+  aiSpecificRateLimit,
+  aiRateLimit,
+  requireSubscription('PRO'),
+  aiController.createGrowthPlan.bind(aiController)
+);
+
+router.post('/ab-test',
+  aiSpecificRateLimit,
+  aiRateLimit,
+  requireSubscription('PRO'),
+  aiController.runABTest.bind(aiController)
+);
+
+// Enterprise-only ML Features
+router.post('/optimize-model',
+  aiSpecificRateLimit,
+  aiRateLimit,
+  requireSubscription('ENTERPRISE'),
+  aiController.optimizeModelPerformance.bind(aiController)
+);
+
 // Middleware for error handling
 router.use((error: any, req: any, res: any, next: any) => {
   console.error('AI Routes Error:', error);
