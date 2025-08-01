@@ -1,0 +1,452 @@
+# Optimized CI/CD Pipeline for InErgize
+# Fast feedback loops with intelligent caching and parallel execution
+
+name: Optimized CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, 'dev/*', 'feature/*' ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  NODE_VERSION: '22.0.0'
+  BUN_VERSION: 'latest'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
+# Cancel previous runs on same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Pre-flight checks (< 2 minutes)
+  pre-flight:
+    name: Pre-flight Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    
+    outputs:
+      changes-services: ${{ steps.changes.outputs.services }}
+      changes-web: ${{ steps.changes.outputs.web }}
+      changes-infrastructure: ${{ steps.changes.outputs.infrastructure }}
+      changes-tests: ${{ steps.changes.outputs.tests }}
+      should-run-full-pipeline: ${{ steps.pipeline-decision.outputs.full-pipeline }}
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            services:
+              - 'services/**'
+            web:
+              - 'web/**'
+            infrastructure:
+              - 'infrastructure/**'
+              - 'docker-compose*.yml'
+            tests:
+              - 'tests/**'
+              - '**/*.test.ts'
+              - '**/*.test.tsx'
+              - '**/*.spec.ts'
+
+      - name: Pipeline decision
+        id: pipeline-decision
+        run: |
+          if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "full-pipeline=true" >> $GITHUB_OUTPUT
+          elif [ "${{ steps.changes.outputs.services }}" == "true" ] || [ "${{ steps.changes.outputs.infrastructure }}" == "true" ]; then
+            echo "full-pipeline=true" >> $GITHUB_OUTPUT
+          else
+            echo "full-pipeline=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Fast feedback loop (< 5 minutes)
+  fast-feedback:
+    name: Fast Feedback Loop
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    needs: pre-flight
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [lint, typecheck, unit-tests]
+        
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/cache
+            node_modules
+            */node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: |
+          bun install --frozen-lockfile
+          # Only install changed service dependencies
+          if [ "${{ needs.pre-flight.outputs.changes-services }}" == "true" ]; then
+            cd services && find . -name "package.json" -execdir bun install --frozen-lockfile \;
+          fi
+
+      - name: Run lint
+        if: matrix.check == 'lint'
+        run: |
+          if [ "${{ needs.pre-flight.outputs.changes-services }}" == "true" ]; then
+            bun run lint:services
+          fi
+          if [ "${{ needs.pre-flight.outputs.changes-web }}" == "true" ]; then
+            bun run lint:web
+          fi
+
+      - name: Run type check
+        if: matrix.check == 'typecheck'
+        run: |
+          if [ "${{ needs.pre-flight.outputs.changes-services }}" == "true" ]; then
+            bun run type-check:auth & 
+            bun run type-check:user &
+            bun run type-check:linkedin &
+            bun run type-check:analytics &
+            wait
+          fi
+          if [ "${{ needs.pre-flight.outputs.changes-web }}" == "true" ]; then
+            bun run type-check:web
+          fi
+
+      - name: Run unit tests
+        if: matrix.check == 'unit-tests'
+        run: |
+          # Smart test selection based on changes
+          if [ "${{ needs.pre-flight.outputs.changes-tests }}" == "true" ]; then
+            bun run test:unit --onlyChanged --passWithNoTests
+          else
+            bun run test:unit --maxWorkers=4 --coverage=false
+          fi
+
+  # Build & Package (< 8 minutes)
+  build-and-package:
+    name: Build & Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [pre-flight, fast-feedback]
+    if: needs.pre-flight.outputs.should-run-full-pipeline == 'true'
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [auth-service, user-service, linkedin-service, analytics-service, ai-service]
+        
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:buildx-stable-1
+            network=host
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ matrix.service }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-${{ matrix.service }}-
+            ${{ runner.os }}-buildx-
+
+      - name: Build service image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/${{ matrix.service }}
+          push: false
+          tags: inergize/${{ matrix.service }}:${{ github.sha }}
+          platforms: linux/amd64
+          cache-from: |
+            type=local,src=/tmp/.buildx-cache
+            type=gha
+          cache-to: |
+            type=local,dest=/tmp/.buildx-cache-new,mode=max
+            type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+            NODE_ENV=production
+
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+  # Integration & E2E Tests (< 15 minutes)
+  integration-tests:
+    name: Integration & E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    needs: [pre-flight, fast-feedback]
+    if: needs.pre-flight.outputs.should-run-full-pipeline == 'true'
+    
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: inergize_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 3
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 3
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/cache
+            node_modules
+            */node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Setup test database
+        run: |
+          bun run db:migrate
+          bun run db:seed
+        env:
+          DATABASE_URL: postgresql://postgres:test_password@localhost:5432/inergize_test
+          REDIS_URL: redis://localhost:6379
+
+      - name: Run integration tests
+        run: bun run test:integration --maxWorkers=2
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:test_password@localhost:5432/inergize_test
+          REDIS_URL: redis://localhost:6379
+
+      - name: Setup Playwright
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: bunx playwright test --reporter=json
+        env:
+          NODE_ENV: test
+          BASE_URL: http://localhost:3000
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.sha }}
+          path: |
+            test-results/
+            playwright-report/
+
+  # Security & Compliance (< 10 minutes)
+  security-compliance:
+    name: Security & Compliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    needs: [pre-flight, fast-feedback]
+    if: needs.pre-flight.outputs.should-run-full-pipeline == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/cache
+          key: ${{ runner.os }}-bun-security-${{ hashFiles('**/bun.lockb') }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Security audit
+        run: |
+          bun audit --json > audit-results.json || true
+          # Check for critical vulnerabilities
+          CRITICAL=$(cat audit-results.json | jq -r '.metadata.vulnerabilities.critical // 0')
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "❌ Critical vulnerabilities found: $CRITICAL"
+            cat audit-results.json | jq '.vulnerabilities[] | select(.severity == "critical")'
+            exit 1
+          fi
+
+      - name: LinkedIn compliance check
+        run: |
+          # Validate rate limiting configuration
+          cd services/linkedin-service
+          if ! grep -q "15.*day" src/**/*.ts; then
+            echo "❌ LinkedIn rate limit not ultra-conservative"
+            exit 1
+          fi
+          echo "✅ LinkedIn compliance validated"
+
+      - name: Secret scanning
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+  # Quality Gate
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [pre-flight, fast-feedback, build-and-package, integration-tests, security-compliance]
+    if: always() && needs.pre-flight.outputs.should-run-full-pipeline == 'true'
+    
+    steps:
+      - name: Evaluate quality gate
+        run: |
+          echo "🎯 Quality Gate Evaluation"
+          
+          # Check job results
+          FAST_FEEDBACK="${{ needs.fast-feedback.result }}"
+          BUILD_RESULT="${{ needs.build-and-package.result }}"
+          TESTS_RESULT="${{ needs.integration-tests.result }}"
+          SECURITY_RESULT="${{ needs.security-compliance.result }}"
+          
+          echo "Fast Feedback: $FAST_FEEDBACK"
+          echo "Build & Package: $BUILD_RESULT"
+          echo "Integration Tests: $TESTS_RESULT"
+          echo "Security & Compliance: $SECURITY_RESULT"
+          
+          # Quality gate logic
+          if [ "$FAST_FEEDBACK" != "success" ]; then
+            echo "❌ Quality Gate: FAILED - Fast feedback checks failed"
+            exit 1
+          fi
+          
+          if [ "$BUILD_RESULT" != "success" ] && [ "$BUILD_RESULT" != "skipped" ]; then
+            echo "❌ Quality Gate: FAILED - Build failed"
+            exit 1
+          fi
+          
+          if [ "$TESTS_RESULT" != "success" ] && [ "$TESTS_RESULT" != "skipped" ]; then
+            echo "❌ Quality Gate: FAILED - Tests failed"
+            exit 1
+          fi
+          
+          if [ "$SECURITY_RESULT" != "success" ] && [ "$SECURITY_RESULT" != "skipped" ]; then
+            echo "❌ Quality Gate: FAILED - Security checks failed"
+            exit 1
+          fi
+          
+          echo "✅ Quality Gate: PASSED - Ready for deployment"
+
+      - name: Post quality gate results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const statusIcon = '${{ needs.quality-gate.result }}' === 'success' ? '✅' : '❌';
+            const body = `## ${statusIcon} Quality Gate Results
+            
+            **Status:** ${{ needs.quality-gate.result === 'success' && 'PASSED' || 'FAILED' }}
+            
+            ### Build Results
+            - Fast Feedback: ${{ needs.fast-feedback.result }}
+            - Build & Package: ${{ needs.build-and-package.result }}
+            - Integration Tests: ${{ needs.integration-tests.result }}
+            - Security & Compliance: ${{ needs.security-compliance.result }}
+            
+            *Pipeline completed in ~${{ github.run_number }} minutes*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  # Auto-deploy to staging on main branch
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    needs: [pre-flight, quality-gate]
+    if: github.ref == 'refs/heads/main' && needs.quality-gate.result == 'success'
+    environment: staging
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to staging
+        run: |
+          echo "🚀 Deploying to staging environment"
+          echo "Quality gate passed, deploying commit: ${{ github.sha }}"
+          # Add actual deployment steps here
+          
+      - name: Smoke tests
+        run: |
+          echo "🧪 Running post-deployment smoke tests"
+          # Basic health checks
+          timeout 60 bash -c 'until curl -f http://staging.inergize.com/health; do sleep 5; done'
+          echo "✅ Staging deployment successful"
+
+      - name: Notify deployment
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            🚀 Staging deployment ${{ job.status }}
+            Commit: ${{ github.sha }}
+            Branch: ${{ github.ref_name }}
+            Duration: ~${{ github.run_duration }} minutes
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

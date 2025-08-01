@@ -1,0 +1,460 @@
+# Automated Code Review Workflow for InErgize
+# Provides comprehensive code analysis and quality feedback on pull requests
+
+name: Automated Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  statuses: write
+
+env:
+  NODE_VERSION: '22.0.0'
+  BUN_VERSION: 'latest'
+
+jobs:
+  # Code Analysis & Review
+  automated-review:
+    name: Automated Code Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/cache
+            node_modules
+            */node_modules
+          key: ${{ runner.os }}-bun-review-${{ hashFiles('**/bun.lockb') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-review-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Code Quality Analysis
+      - name: Run ESLint with auto-fix suggestions
+        run: |
+          bunx eslint . --ext .ts,.tsx,.js,.jsx --format json --output-file eslint-results.json || true
+          bunx eslint . --ext .ts,.tsx,.js,.jsx --format stylish > eslint-summary.txt || true
+
+      - name: Run Prettier check
+        run: |
+          bunx prettier --check . --write=false > prettier-results.txt 2>&1 || true
+
+      - name: TypeScript compilation check
+        run: |
+          bunx tsc --noEmit --pretty false > typescript-results.txt 2>&1 || true
+
+      - name: Security vulnerability scan
+        run: |
+          bun audit --json > security-audit.json 2>&1 || true
+
+      - name: Code complexity analysis
+        run: |
+          # Install complexity analyzer
+          npm install -g complexity-report || true
+          
+          # Analyze complexity for changed files
+          git diff --name-only origin/${{ github.base_ref }}..HEAD -- '*.ts' '*.tsx' '*.js' '*.jsx' | head -20 | while read file; do
+            if [ -f "$file" ]; then
+              echo "Analyzing: $file" >> complexity-results.txt
+              complexity-report --format json "$file" >> complexity-results.txt 2>&1 || true
+              echo "---" >> complexity-results.txt
+            fi
+          done
+
+      # LinkedIn Compliance Checks
+      - name: LinkedIn compliance validation
+        run: |
+          echo "🔍 Checking LinkedIn compliance..." > compliance-results.txt
+          
+          # Check rate limiting configurations
+          if git diff --name-only origin/${{ github.base_ref }}..HEAD | grep -q "linkedin-service"; then
+            cd services/linkedin-service || exit 0
+            
+            # Check for ultra-conservative rate limits
+            if ! grep -r "15.*day\|daily.*15" src/ >> ../../compliance-results.txt 2>&1; then
+              echo "⚠️ LinkedIn daily rate limit should be 15/day (ultra-conservative)" >> ../../compliance-results.txt
+            fi
+            
+            # Check for health monitoring
+            if ! grep -r "healthScore\|autoSuspend" src/ >> ../../compliance-results.txt 2>&1; then
+              echo "⚠️ LinkedIn health monitoring should be implemented" >> ../../compliance-results.txt
+            fi
+            
+            # Check for human-like delays
+            if ! grep -r "45.*180\|randomDelay" src/ >> ../../compliance-results.txt 2>&1; then
+              echo "⚠️ LinkedIn automation should use human-like delays (45-180s)" >> ../../compliance-results.txt
+            fi
+            
+            cd ../..
+          fi
+
+      # Security Analysis
+      - name: Security analysis
+        run: |
+          echo "🔒 Security Analysis Results" > security-results.txt
+          
+          # Check for hardcoded secrets
+          git diff --name-only origin/${{ github.base_ref }}..HEAD | while read file; do
+            if [ -f "$file" ]; then
+              # Check for potential secrets
+              if grep -i "password\|secret\|key\|token" "$file" | grep -v "process.env\|config\|\.env" >> security-results.txt 2>&1; then
+                echo "⚠️ Potential hardcoded secrets in $file" >> security-results.txt
+              fi
+            fi
+          done
+          
+          # Check for SQL injection vulnerabilities
+          git diff --name-only origin/${{ github.base_ref }}..HEAD -- '*.ts' '*.js' | while read file; do
+            if [ -f "$file" ]; then
+              if grep -n "query.*+\|query.*\${" "$file" >> security-results.txt 2>&1; then
+                echo "⚠️ Potential SQL injection vulnerability in $file" >> security-results.txt
+              fi
+            fi
+          done
+
+      # Performance Analysis
+      - name: Performance analysis
+        run: |
+          echo "⚡ Performance Analysis Results" > performance-results.txt
+          
+          # Check for performance anti-patterns
+          git diff --name-only origin/${{ github.base_ref }}..HEAD -- '*.ts' '*.tsx' '*.js' '*.jsx' | while read file; do
+            if [ -f "$file" ]; then
+              # Check for synchronous operations
+              if grep -n "\.sync\|synchronous" "$file" >> performance-results.txt 2>&1; then
+                echo "⚠️ Synchronous operations found in $file" >> performance-results.txt
+              fi
+              
+              # Check for missing pagination
+              if grep -n "findMany\|find(" "$file" | grep -v "take\|limit" >> performance-results.txt 2>&1; then
+                echo "⚠️ Database queries without pagination in $file" >> performance-results.txt
+              fi
+              
+              # Check for N+1 query patterns
+              if grep -n "map.*await\|forEach.*await" "$file" >> performance-results.txt 2>&1; then
+                echo "⚠️ Potential N+1 query pattern in $file" >> performance-results.txt
+              fi
+            fi
+          done
+
+      # Architecture Analysis
+      - name: Architecture analysis
+        run: |
+          echo "🏗️ Architecture Analysis Results" > architecture-results.txt
+          
+          # Check service boundaries
+          git diff --name-only origin/${{ github.base_ref }}..HEAD | while read file; do
+            if [[ $file == services/* ]]; then
+              service_name=$(echo $file | cut -d'/' -f2)
+              other_services=(auth-service user-service linkedin-service analytics-service ai-service)
+              
+              for other in "${other_services[@]}"; do
+                if [ "$other" != "$service_name" ]; then
+                  if grep -n "$other" "$file" >> architecture-results.txt 2>&1; then
+                    echo "⚠️ Cross-service dependency in $file referencing $other" >> architecture-results.txt
+                  fi
+                fi
+              done
+            fi
+          done
+
+      # Generate comprehensive review
+      - name: Generate code review summary
+        run: |
+          cat > code-review-summary.md << 'EOF'
+          # 🤖 Automated Code Review Summary
+          
+          ## 📊 Analysis Overview
+          
+          This automated review analyzed the following aspects of your pull request:
+          - Code quality and style consistency
+          - TypeScript compilation and type safety
+          - Security vulnerabilities and best practices
+          - Performance optimization opportunities
+          - LinkedIn API compliance requirements
+          - Architecture and service boundaries
+          
+          ## 📝 Detailed Results
+          
+          ### Code Quality (ESLint)
+          ```
+          $(cat eslint-summary.txt 2>/dev/null || echo "No ESLint issues found")
+          ```
+          
+          ### Code Formatting (Prettier)
+          ```
+          $(cat prettier-results.txt 2>/dev/null || echo "Code formatting is consistent")
+          ```
+          
+          ### TypeScript Compilation
+          ```
+          $(cat typescript-results.txt 2>/dev/null || echo "TypeScript compilation successful")
+          ```
+          
+          ### Security Analysis
+          ```
+          $(cat security-results.txt 2>/dev/null || echo "No security issues detected")
+          ```
+          
+          ### Performance Analysis
+          ```
+          $(cat performance-results.txt 2>/dev/null || echo "No performance issues detected")
+          ```
+          
+          ### LinkedIn Compliance
+          ```
+          $(cat compliance-results.txt 2>/dev/null || echo "LinkedIn compliance checks passed")
+          ```
+          
+          ### Architecture Review
+          ```
+          $(cat architecture-results.txt 2>/dev/null || echo "Architecture boundaries respected")
+          ```
+          
+          ## 🎯 Recommendations
+          
+          Based on the analysis, here are the key recommendations:
+          
+          1. **Code Quality**: $(if [ -s eslint-results.json ]; then echo "Address ESLint issues for better code consistency"; else echo "Code quality looks good!"; fi)
+          
+          2. **Security**: $(if grep -q "⚠️" security-results.txt 2>/dev/null; then echo "Review security findings and implement fixes"; else echo "No security concerns identified"; fi)
+          
+          3. **Performance**: $(if grep -q "⚠️" performance-results.txt 2>/dev/null; then echo "Consider performance optimizations highlighted above"; else echo "Performance patterns look good"; fi)
+          
+          4. **LinkedIn Compliance**: $(if grep -q "⚠️" compliance-results.txt 2>/dev/null; then echo "Ensure LinkedIn API usage follows ultra-conservative compliance rules"; else echo "LinkedIn compliance requirements met"; fi)
+          
+          ## ✅ Next Steps
+          
+          1. Review the detailed feedback above
+          2. Address any high-priority issues (security, compliance)
+          3. Consider implementing suggested improvements
+          4. Run tests locally to ensure changes work correctly
+          5. Request human review when ready
+          
+          ---
+          
+          *This review was generated automatically. Please request human review for complex architectural decisions or business logic validation.*
+          EOF
+
+      # Post review as PR comment
+      - name: Post automated review comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Read the generated review summary
+            const reviewSummary = fs.readFileSync('code-review-summary.md', 'utf8');
+            
+            // Get existing comments to avoid duplicates
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            // Check if automated review comment already exists
+            const existingComment = comments.find(comment => 
+              comment.user.login === 'github-actions[bot]' && 
+              comment.body.includes('🤖 Automated Code Review Summary')
+            );
+            
+            if (existingComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: reviewSummary
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: reviewSummary
+              });
+            }
+
+      # Create review status checks
+      - name: Create status checks
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Determine overall status based on analysis results
+            let hasErrors = false;
+            let hasWarnings = false;
+            
+            // Check ESLint results
+            try {
+              const eslintResults = JSON.parse(fs.readFileSync('eslint-results.json', 'utf8'));
+              const errorCount = eslintResults.reduce((sum, file) => sum + file.errorCount, 0);
+              const warningCount = eslintResults.reduce((sum, file) => sum + file.warningCount, 0);
+              
+              if (errorCount > 0) hasErrors = true;
+              if (warningCount > 0) hasWarnings = true;
+            } catch (error) {
+              // ESLint results not available
+            }
+            
+            // Check security results
+            const securityContent = fs.readFileSync('security-results.txt', 'utf8');
+            if (securityContent.includes('⚠️')) {
+              hasWarnings = true;
+            }
+            
+            // Check compliance results
+            const complianceContent = fs.readFileSync('compliance-results.txt', 'utf8');
+            if (complianceContent.includes('⚠️')) {
+              hasWarnings = true;
+            }
+            
+            // Set status based on findings
+            const state = hasErrors ? 'failure' : hasWarnings ? 'pending' : 'success';
+            const description = hasErrors ? 
+              'Code review found issues that need to be addressed' : 
+              hasWarnings ? 
+                'Code review found suggestions for improvement' : 
+                'Code review passed successfully';
+            
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: state,
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              description: description,
+              context: 'automated-code-review'
+            });
+
+      # Upload analysis artifacts
+      - name: Upload review artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-review-results-${{ github.event.pull_request.number }}
+          path: |
+            eslint-results.json
+            eslint-summary.txt
+            prettier-results.txt
+            typescript-results.txt
+            security-audit.json
+            security-results.txt
+            performance-results.txt
+            compliance-results.txt
+            architecture-results.txt
+            complexity-results.txt
+            code-review-summary.md
+          retention-days: 30
+
+  # Security-focused review for sensitive changes
+  security-review:
+    name: Security-Focused Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: contains(github.event.pull_request.changed_files, 'auth') || contains(github.event.pull_request.changed_files, 'security') || contains(github.event.pull_request.changed_files, 'linkedin-service')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run security scan
+        uses: securecodewarrior/github-action-add-sarif@v1
+        with:
+          sarif-file: 'security-scan-results.sarif'
+
+      - name: Advanced secret scanning
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
+
+      - name: LinkedIn compliance deep check
+        run: |
+          echo "🔍 Deep LinkedIn compliance analysis..." > deep-compliance.txt
+          
+          if git diff --name-only origin/${{ github.base_ref }}..HEAD | grep -q "linkedin-service"; then
+            cd services/linkedin-service
+            
+            # Check for compliance violations
+            echo "Checking rate limiting..." >> ../../deep-compliance.txt
+            grep -r "rateLimit\|throttle" src/ | head -10 >> ../../deep-compliance.txt 2>&1 || true
+            
+            echo "Checking automation patterns..." >> ../../deep-compliance.txt
+            grep -r "automation\|schedule" src/ | head -10 >> ../../deep-compliance.txt 2>&1 || true
+            
+            echo "Checking health monitoring..." >> ../../deep-compliance.txt
+            grep -r "health\|monitor\|suspend" src/ | head -10 >> ../../deep-compliance.txt 2>&1 || true
+            
+            cd ../..
+          fi
+
+      - name: Post security review comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            const securitySummary = `## 🔒 Security Review Results
+            
+            This pull request affects security-sensitive components and has undergone additional security analysis.
+            
+            ### Security Scan Results
+            - Advanced secret scanning: Completed
+            - LinkedIn compliance check: Completed
+            - Vulnerability assessment: In progress
+            
+            ### LinkedIn Compliance Deep Analysis
+            \`\`\`
+            ${fs.readFileSync('deep-compliance.txt', 'utf8').slice(0, 2000)}
+            \`\`\`
+            
+            ⚠️ **Important**: This PR affects security-critical components. Please ensure:
+            1. All rate limits follow ultra-conservative LinkedIn policies
+            2. No hardcoded secrets or credentials
+            3. Proper error handling and logging
+            4. Health monitoring and auto-suspension mechanisms
+            
+            **Security team review is recommended for this PR.**
+            `;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: securitySummary
+            });
+
+# Scheduled dependency security review
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
