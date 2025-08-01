@@ -1,0 +1,136 @@
+{
+  "timestamp": "2025-08-01T22:46:59.078Z",
+  "frontend": {
+    "coreWebVitals": {
+      "lcp": 426,
+      "fcp": 100,
+      "cls": 0.035,
+      "ttfb": 6
+    },
+    "pageLoad": {
+      "domContentLoaded": 3,
+      "loadComplete": 532,
+      "interactive": 506
+    },
+    "lighthouse": {
+      "performance": 100,
+      "accessibility": 85,
+      "bestPractices": 90,
+      "seo": 88
+    }
+  },
+  "backend": {
+    "apiResponseTimes": {
+      "average": 267,
+      "p95": 781,
+      "p99": 857,
+      "max": 857
+    },
+    "endpoints": [
+      {
+        "path": "/health",
+        "avgTime": 113,
+        "p95Time": 149,
+        "errorRate": 0
+      },
+      {
+        "path": "/api/users/profile",
+        "avgTime": 61,
+        "p95Time": 102,
+        "errorRate": 0
+      },
+      {
+        "path": "/api/content/templates",
+        "avgTime": 129,
+        "p95Time": 192,
+        "errorRate": 0
+      },
+      {
+        "path": "/api/v1/linkedin/profile",
+        "avgTime": 489,
+        "p95Time": 583,
+        "errorRate": 0
+      },
+      {
+        "path": "/api/v1/metrics/profile",
+        "avgTime": 697,
+        "p95Time": 857,
+        "errorRate": 0
+      },
+      {
+        "path": "/api/automation/safety-score",
+        "avgTime": 111,
+        "p95Time": 175,
+        "errorRate": 0
+      }
+    ],
+    "errorRate": 0,
+    "throughput": 6
+  },
+  "websocket": {
+    "connectionTime": 416,
+    "messageLatency": {
+      "average": 34,
+      "p95": 128,
+      "max": 304
+    },
+    "throughput": 71,
+    "dropRate": 0.5191159054798149,
+    "concurrentConnections": 5
+  },
+  "mobile": {
+    "devices": [
+      {
+        "name": "iPhone 13 Pro",
+        "lcp": 0,
+        "fcp": 1,
+        "loadTime3G": 508,
+        "loadTime4G": 305,
+        "memoryUsage": 95
+      },
+      {
+        "name": "Pixel 5",
+        "lcp": 0,
+        "fcp": 1,
+        "loadTime3G": 508,
+        "loadTime4G": 305,
+        "memoryUsage": 121
+      }
+    ],
+    "averagePerformance": 508
+  },
+  "system": {
+    "cpu": {
+      "usage": 194.72,
+      "cores": 8
+    },
+    "memory": {
+      "used": 16280,
+      "total": 16384,
+      "percentage": 99.36
+    }
+  },
+  "overallScore": 70,
+  "recommendations": [
+    {
+      "category": "backend",
+      "priority": "critical",
+      "title": "Optimize API Response Times",
+      "description": "Average API response time is 267ms, exceeding 200ms target",
+      "expectedImpact": "Improve application responsiveness by 30-50%",
+      "implementation": "Add database indexes, implement caching, optimize queries",
+      "currentValue": 267,
+      "targetValue": 150
+    },
+    {
+      "category": "infrastructure",
+      "priority": "medium",
+      "title": "Monitor Memory Usage",
+      "description": "System memory usage is 99.36%",
+      "expectedImpact": "Prevent system instability",
+      "implementation": "Scale resources, optimize memory usage",
+      "currentValue": 99.36,
+      "targetValue": 70
+    }
+  ]
+}

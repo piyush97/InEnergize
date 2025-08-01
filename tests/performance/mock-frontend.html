@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InErgize - LinkedIn Profile Optimization</title>
+    <meta name="description" content="Optimize your LinkedIn profile with AI-powered tools">
+    
+    <!-- Performance testing meta tags -->
+    <meta name="performance-test" content="true">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f8f9fa;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #0077b5 0%, #00a0dc 100%);
+            color: white;
+            padding: 1rem 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+        
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+        }
+        
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            transition: opacity 0.3s;
+        }
+        
+        .nav-links a:hover {
+            opacity: 0.8;
+        }
+        
+        .hero {
+            background: white;
+            padding: 4rem 0;
+            text-align: center;
+        }
+        
+        .hero h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: #0077b5;
+        }
+        
+        .hero p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            color: #666;
+        }
+        
+        .cta-button {
+            background: #0077b5;
+            color: white;
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .cta-button:hover {
+            background: #005582;
+        }
+        
+        .features {
+            padding: 4rem 0;
+            background: #f8f9fa;
+        }
+        
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+        
+        .feature-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            background: #0077b5;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1rem;
+            color: white;
+            font-size: 1.5rem;
+        }
+        
+        .stats {
+            background: #0077b5;
+            color: white;
+            padding: 4rem 0;
+            text-align: center;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+        
+        .stat-item h3 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .dashboard-preview {
+            padding: 4rem 0;
+            background: white;
+        }
+        
+        .dashboard-mockup {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 2rem;
+            margin-top: 2rem;
+            min-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #e9ecef;
+        }
+        
+        footer {
+            background: #333;
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #0077b5;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2rem;
+            }
+            
+            .nav-links {
+                display: none;
+            }
+            
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <div class="logo">InErgize</div>
+            <ul class="nav-links">
+                <li><a href="#features">Features</a></li>
+                <li><a href="#pricing">Pricing</a></li>
+                <li><a href="#about">About</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <section class="hero">
+        <div class="container">
+            <h1>Optimize Your LinkedIn Profile with AI</h1>
+            <p>Increase your professional visibility and network growth with intelligent automation and analytics</p>
+            <button class="cta-button" onclick="startDemo()">Start Free Trial</button>
+        </div>
+    </section>
+
+    <section class="features" id="features">
+        <div class="container">
+            <h2 style="text-align: center; margin-bottom: 2rem;">Powerful Features for LinkedIn Success</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🤖</div>
+                    <h3>AI-Powered Content</h3>
+                    <p>Generate engaging LinkedIn posts and content using advanced AI that understands your industry and audience.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3>Advanced Analytics</h3>
+                    <p>Track your profile performance, engagement rates, and connection growth with detailed analytics and insights.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Smart Automation</h3>
+                    <p>Automate your networking and engagement while maintaining authenticity and compliance with LinkedIn's terms.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎯</div>
+                    <h3>Profile Optimization</h3>
+                    <p>Get AI-driven recommendations to optimize your profile for maximum visibility and professional impact.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔒</div>
+                    <h3>Compliance & Safety</h3>
+                    <p>Stay within LinkedIn's guidelines with built-in safety monitoring and compliance-first automation.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📱</div>
+                    <h3>Mobile Ready</h3>
+                    <p>Access all features from your mobile device with a responsive, mobile-optimized interface.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="stats">
+        <div class="container">
+            <h2>Trusted by Professionals Worldwide</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <h3 id="users-count">10,000+</h3>
+                    <p>Active Users</p>
+                </div>
+                <div class="stat-item">
+                    <h3 id="connections-count">2.5M+</h3>
+                    <p>Connections Made</p>
+                </div>
+                <div class="stat-item">
+                    <h3 id="posts-count">500K+</h3>
+                    <p>Posts Generated</p>
+                </div>
+                <div class="stat-item">
+                    <h3 id="engagement-rate">95%</h3>
+                    <p>User Satisfaction</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="dashboard-preview">
+        <div class="container">
+            <h2 style="text-align: center;">See InErgize in Action</h2>
+            <div class="dashboard-mockup">
+                <div id="dashboard-content">
+                    <h3>Dashboard Preview Loading...</h3>
+                    <div class="loading" id="loading">
+                        <div class="spinner"></div>
+                        <p>Loading dashboard data...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2024 InErgize. All rights reserved. | Optimizing LinkedIn professionals worldwide.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Performance monitoring
+        const startTime = performance.now();
+        let metricsData = {
+            pageLoadStart: startTime,
+            domContentLoaded: 0,
+            windowLoaded: 0,
+            firstContentfulPaint: 0,
+            largestContentfulPaint: 0
+        };
+
+        // Track Core Web Vitals
+        function trackCoreWebVitals() {
+            // First Contentful Paint
+            const observer = new PerformanceObserver((list) => {
+                for (const entry of list.getEntries()) {
+                    if (entry.name === 'first-contentful-paint') {
+                        metricsData.firstContentfulPaint = entry.startTime;
+                    }
+                }
+            });
+            
+            if ('PerformanceObserver' in window) {
+                observer.observe({ entryTypes: ['paint'] });
+            }
+
+            // Largest Contentful Paint
+            const lcpObserver = new PerformanceObserver((list) => {
+                const entries = list.getEntries();
+                if (entries.length) {
+                    metricsData.largestContentfulPaint = entries[entries.length - 1].startTime;
+                }
+            });
+            
+            if ('PerformanceObserver' in window) {
+                lcpObserver.observe({ entryTypes: ['largest-contentful-paint'] });
+            }
+        }
+
+        // DOM Content Loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            metricsData.domContentLoaded = performance.now();
+            console.log('DOM Content Loaded:', metricsData.domContentLoaded);
+            
+            // Animate stats
+            animateStats();
+            
+            // Load dashboard content
+            setTimeout(loadDashboardContent, 1000);
+        });
+
+        // Window loaded
+        window.addEventListener('load', () => {
+            metricsData.windowLoaded = performance.now();
+            console.log('Window Loaded:', metricsData.windowLoaded);
+            console.log('Performance Metrics:', metricsData);
+            
+            // Track web vitals
+            trackCoreWebVitals();
+        });
+
+        // Animate statistics
+        function animateStats() {
+            const stats = [
+                { id: 'users-count', target: 10000, suffix: '+' },
+                { id: 'connections-count', target: 2500000, suffix: 'M+', divisor: 1000000 },
+                { id: 'posts-count', target: 500000, suffix: 'K+', divisor: 1000 },
+                { id: 'engagement-rate', target: 95, suffix: '%' }
+            ];
+
+            stats.forEach(stat => {
+                const element = document.getElementById(stat.id);
+                const target = stat.target;
+                const divisor = stat.divisor || 1;
+                const duration = 2000;
+                const start = performance.now();
+
+                function updateCount(currentTime) {
+                    const elapsed = currentTime - start;
+                    const progress = Math.min(elapsed / duration, 1);
+                    const current = Math.floor(target * progress);
+                    
+                    let displayValue = Math.floor(current / divisor);
+                    if (divisor === 1000000) {
+                        displayValue = (current / divisor).toFixed(1);
+                    }
+                    
+                    element.textContent = displayValue + stat.suffix;
+
+                    if (progress < 1) {
+                        requestAnimationFrame(updateCount);
+                    }
+                }
+
+                requestAnimationFrame(updateCount);
+            });
+        }
+
+        // Load dashboard content
+        function loadDashboardContent() {
+            const loadingEl = document.getElementById('loading');
+            const contentEl = document.getElementById('dashboard-content');
+            
+            loadingEl.style.display = 'block';
+            
+            // Simulate API call
+            setTimeout(() => {
+                contentEl.innerHTML = `
+                    <div style="text-align: left;">
+                        <h3>📊 Performance Dashboard</h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1rem 0;">
+                            <div style="background: white; padding: 1rem; border-radius: 5px; border-left: 4px solid #0077b5;">
+                                <strong>Profile Views</strong><br>
+                                <span style="font-size: 1.5rem; color: #0077b5;">1,247</span>
+                            </div>
+                            <div style="background: white; padding: 1rem; border-radius: 5px; border-left: 4px solid #28a745;">
+                                <strong>Connections</strong><br>
+                                <span style="font-size: 1.5rem; color: #28a745;">3,891</span>
+                            </div>
+                            <div style="background: white; padding: 1rem; border-radius: 5px; border-left: 4px solid #ffc107;">
+                                <strong>Engagement</strong><br>
+                                <span style="font-size: 1.5rem; color: #ffc107;">12.4%</span>
+                            </div>
+                            <div style="background: white; padding: 1rem; border-radius: 5px; border-left: 4px solid #dc3545;">
+                                <strong>Posts This Week</strong><br>
+                                <span style="font-size: 1.5rem; color: #dc3545;">8</span>
+                            </div>
+                        </div>
+                        <p style="color: #666; margin-top: 1rem;">Real-time analytics powered by AI insights</p>
+                    </div>
+                `;
+                loadingEl.style.display = 'none';
+            }, 1500);
+        }
+
+        // CTA button interaction
+        function startDemo() {
+            const button = event.target;
+            const originalText = button.textContent;
+            
+            button.textContent = 'Loading...';
+            button.style.background = '#28a745';
+            
+            // Simulate API call
+            setTimeout(() => {
+                button.textContent = 'Demo Started! ✓';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = '#0077b5';
+                }, 2000);
+            }, 1000);
+        }
+
+        // Add some resources for testing
+        function loadTestResources() {
+            // Simulate loading external resources
+            const resources = [
+                'https://via.placeholder.com/100x100/0077b5/ffffff?text=Icon1',
+                'https://via.placeholder.com/100x100/28a745/ffffff?text=Icon2',
+                'https://via.placeholder.com/100x100/ffc107/000000?text=Icon3'
+            ];
+
+            resources.forEach((src, index) => {
+                const img = new Image();
+                img.src = src;
+                img.style.display = 'none';
+                document.body.appendChild(img);
+            });
+        }
+
+        // Load test resources
+        setTimeout(loadTestResources, 500);
+
+        // Export metrics for testing
+        window.getPerformanceMetrics = () => metricsData;
+        
+        // Simulate user interactions for testing
+        window.simulateUserInteraction = () => {
+            setTimeout(() => {
+                document.querySelector('.cta-button').click();
+            }, 100);
+        };
+    </script>
+</body>
+</html>
