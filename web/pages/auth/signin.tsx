@@ -1,12 +1,12 @@
-import React, { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 import { yupResolver } from '@hookform/resolvers/yup'
-import * as yup from 'yup'
+// NextAuth removed - using custom auth service
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { signIn, getSession } from 'next-auth/react'
+import React, { useState } from 'react'
+import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
+import * as yup from 'yup'
 import AppLayout from '../../components/Layout/AppLayout'
 
 const schema = yup.object({
@@ -34,49 +34,70 @@ const SignInPage: React.FC = () => {
   const onSubmit = async (data: FormData) => {
     setIsLoading(true)
     try {
-      const result = await signIn('credentials', {
-        email: data.email,
-        password: data.password,
-        redirect: false,
+      const response = await fetch('http://localhost:8000/api/v1/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+        }),
       })
 
-      if (result?.error) {
-        toast.error('Invalid email or password')
-        return
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.message || result.error || 'Something went wrong')
       }
 
-      const session = await getSession()
-      if (session) {
+      if (result.success) {
+        // Ensure user object has all required properties
+        const completeUser = {
+          ...result.user,
+          linkedinConnected: result.user.linkedinConnected || false,
+          createdAt: result.user.createdAt || new Date().toISOString()
+        };
+        
+        // Store auth tokens
+        localStorage.setItem('authToken', result.tokens.accessToken)
+        localStorage.setItem('refreshToken', result.tokens.refreshToken)
+        localStorage.setItem('user', JSON.stringify(completeUser))
+        
         toast.success('Welcome back!')
         router.push((callbackUrl as string) || '/dashboard')
+      } else {
+        throw new Error(result.message || result.error || 'Login failed')
       }
-    } catch {
-      toast.error('Something went wrong. Please try again.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong. Please try again.')
     } finally {
       setIsLoading(false)
     }
   }
 
   const handleGoogleSignIn = () => {
-    signIn('google', { callbackUrl: (callbackUrl as string) || '/dashboard' })
+    // Google OAuth integration - to be implemented
+    toast.error('Google sign-in coming soon!')
   }
 
   const handleLinkedInSignIn = () => {
-    signIn('linkedin', { callbackUrl: (callbackUrl as string) || '/dashboard' })
+    // LinkedIn OAuth integration - to be implemented
+    toast.error('LinkedIn sign-in coming soon!')
   }
 
   return (
     <AppLayout showSidebar={false} showFooter={false}>
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full space-y-8">
+      <div className="flex items-center justify-center min-h-screen px-4 py-12 bg-gray-50 sm:px-6 lg:px-8">
+        <div className="w-full max-w-md space-y-8">
           <div>
-            <div className="mx-auto h-12 w-auto flex justify-center">
+            <div className="flex justify-center w-auto h-12 mx-auto">
               <h1 className="text-3xl font-bold text-primary-600">InErgize</h1>
             </div>
-            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+            <h2 className="mt-6 text-3xl font-extrabold text-center text-gray-900">
               Sign in to your account
             </h2>
-            <p className="mt-2 text-center text-sm text-gray-600">
+            <p className="mt-2 text-sm text-center text-gray-600">
               Or{' '}
               <Link
                 href="/auth/signup"
@@ -93,7 +114,7 @@ const SignInPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleLinkedInSignIn}
-                className="w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm bg-linkedin-600 text-white font-medium hover:bg-linkedin-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-linkedin-500 transition-colors"
+                className="flex items-center justify-center w-full px-4 py-2 font-medium text-white transition-colors border border-transparent rounded-md shadow-sm bg-linkedin-600 hover:bg-linkedin-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-linkedin-500"
               >
                 <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
@@ -104,7 +125,7 @@ const SignInPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleGoogleSignIn}
-                className="w-full inline-flex justify-center items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
+                className="inline-flex items-center justify-center w-full px-4 py-2 text-sm font-medium text-gray-500 transition-colors bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               >
                 <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -121,7 +142,7 @@ const SignInPage: React.FC = () => {
                 <div className="w-full border-t border-gray-300" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-gray-50 text-gray-500">Or continue with email</span>
+                <span className="px-2 text-gray-500 bg-gray-50">Or continue with email</span>
               </div>
             </div>
 
@@ -157,13 +178,13 @@ const SignInPage: React.FC = () => {
                   />
                   <button
                     type="button"
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    className="absolute inset-y-0 right-0 flex items-center pr-3"
                     onClick={() => setShowPassword(!showPassword)}
                   >
                     {showPassword ? (
-                      <EyeSlashIcon className="h-5 w-5 text-gray-400" />
+                      <EyeSlashIcon className="w-5 h-5 text-gray-400" />
                     ) : (
-                      <EyeIcon className="h-5 w-5 text-gray-400" />
+                      <EyeIcon className="w-5 h-5 text-gray-400" />
                     )}
                   </button>
                   {errors.password && (
@@ -177,9 +198,9 @@ const SignInPage: React.FC = () => {
                   <input
                     {...register('rememberMe')}
                     type="checkbox"
-                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                    className="w-4 h-4 border-gray-300 rounded text-primary-600 focus:ring-primary-500"
                   />
-                  <label htmlFor="rememberMe" className="ml-2 block text-sm text-gray-900">
+                  <label htmlFor="rememberMe" className="block ml-2 text-sm text-gray-900">
                     Remember me
                   </label>
                 </div>
@@ -198,11 +219,11 @@ const SignInPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="relative flex justify-center w-full px-4 py-2 text-sm font-medium text-white transition-colors border border-transparent rounded-md group bg-primary hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isLoading ? (
                     <div className="flex items-center">
-                      <div className="animate-spin -ml-1 mr-3 h-5 w-5 text-white">
+                      <div className="w-5 h-5 mr-3 -ml-1 text-white animate-spin">
                         <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>

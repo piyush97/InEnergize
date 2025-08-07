@@ -5,9 +5,9 @@ interface User {
   email: string;
   firstName: string;
   lastName: string;
-  subscriptionLevel: 'free' | 'basic' | 'premium' | 'enterprise';
+  subscriptionTier: 'FREE' | 'BASIC' | 'PROFESSIONAL' | 'ENTERPRISE';
   linkedinConnected: boolean;
-  profilePicture?: string;
+  profileImage?: string;
   createdAt: string;
 }
 
@@ -55,12 +55,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setUser(null);
     setToken(null);
     localStorage.removeItem('authToken');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
   };
 
   const verifyToken = useCallback(async (authToken: string) => {
     try {
-      const response = await fetch('/api/v1/auth/verify', {
+      const response = await fetch('http://localhost:8000/api/v1/auth/verify', {
         headers: {
           'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json'
@@ -73,7 +74,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       const data = await response.json();
       if (data.success) {
-        setUser(data.data.user);
+        setUser(data.user);
         setToken(authToken);
       } else {
         handleLogout();
@@ -104,7 +105,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = async (email: string, password: string): Promise<void> => {
     try {
       setLoading(true);
-      const response = await fetch('/api/v1/auth/login', {
+      const response = await fetch('http://localhost:8000/api/v1/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -115,20 +116,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
+        throw new Error(data.message || data.error || 'Login failed');
       }
 
       if (data.success) {
-        const { user: userData, token: authToken } = data.data;
+        const { user: userData, tokens } = data;
         
-        setUser(userData);
-        setToken(authToken);
+        // Ensure user object has all required properties
+        const completeUser = {
+          ...userData,
+          linkedinConnected: userData.linkedinConnected || false,
+          createdAt: userData.createdAt || new Date().toISOString()
+        };
+        
+        setUser(completeUser);
+        setToken(tokens.accessToken);
         
         // Store in localStorage
-        localStorage.setItem('authToken', authToken);
+        localStorage.setItem('authToken', tokens.accessToken);
+        localStorage.setItem('refreshToken', tokens.refreshToken);
         localStorage.setItem('user', JSON.stringify(userData));
       } else {
-        throw new Error(data.error || 'Login failed');
+        throw new Error(data.message || data.error || 'Login failed');
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -141,7 +150,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const register = async (userData: RegisterData): Promise<void> => {
     try {
       setLoading(true);
-      const response = await fetch('/api/v1/auth/register', {
+      const response = await fetch('http://localhost:8000/api/v1/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -152,20 +161,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Registration failed');
+        throw new Error(data.message || data.error || 'Registration failed');
       }
 
       if (data.success) {
-        const { user: newUser, token: authToken } = data.data;
+        const { user: newUser, tokens } = data;
         
-        setUser(newUser);
-        setToken(authToken);
+        // Ensure user object has all required properties
+        const completeUser = {
+          ...newUser,
+          linkedinConnected: newUser.linkedinConnected || false,
+          createdAt: newUser.createdAt || new Date().toISOString()
+        };
+        
+        setUser(completeUser);
+        setToken(tokens.accessToken);
         
         // Store in localStorage
-        localStorage.setItem('authToken', authToken);
+        localStorage.setItem('authToken', tokens.accessToken);
+        localStorage.setItem('refreshToken', tokens.refreshToken);
         localStorage.setItem('user', JSON.stringify(newUser));
       } else {
-        throw new Error(data.error || 'Registration failed');
+        throw new Error(data.message || data.error || 'Registration failed');
       }
     } catch (error) {
       console.error('Registration error:', error);
@@ -181,15 +198,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const refreshToken = async (): Promise<void> => {
     try {
-      const currentToken = token || localStorage.getItem('authToken');
-      if (!currentToken) {
-        throw new Error('No token available');
+      const refreshTokenValue = localStorage.getItem('refreshToken');
+      if (!refreshTokenValue) {
+        throw new Error('No refresh token available');
       }
 
-      const response = await fetch('/api/v1/auth/refresh', {
+      const response = await fetch('http://localhost:8000/api/v1/auth/refresh', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${currentToken}`,
+          'Authorization': `Bearer ${refreshTokenValue}`,
           'Content-Type': 'application/json'
         }
       });
@@ -197,15 +214,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Token refresh failed');
+        throw new Error(data.message || data.error || 'Token refresh failed');
       }
 
       if (data.success) {
-        const { token: newToken } = data.data;
-        setToken(newToken);
-        localStorage.setItem('authToken', newToken);
+        const { tokens } = data;
+        setToken(tokens.accessToken);
+        localStorage.setItem('authToken', tokens.accessToken);
+        localStorage.setItem('refreshToken', tokens.refreshToken);
       } else {
-        throw new Error(data.error || 'Token refresh failed');
+        throw new Error(data.message || data.error || 'Token refresh failed');
       }
     } catch (error) {
       console.error('Token refresh error:', error);

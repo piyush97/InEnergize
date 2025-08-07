@@ -1,6 +1,6 @@
 import '../styles/globals.css'
 import type { AppProps } from 'next/app'
-import { SessionProvider } from 'next-auth/react'
+import { AuthProvider } from '@/contexts/AuthContext'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 import { useState, useEffect } from 'react'
@@ -11,7 +11,7 @@ import { BundlePerformanceMonitor } from '@/components/performance/BundleOptimiz
 
 export default function App({
   Component,
-  pageProps: { session, ...pageProps },
+  pageProps,
 }: AppProps) {
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
@@ -67,7 +67,7 @@ export default function App({
       </Head>
       
       <QueryClientProvider client={queryClient}>
-        <SessionProvider session={session}>
+        <AuthProvider>
           <Component {...pageProps} />
           <Toaster 
             position="top-right"
@@ -111,7 +111,7 @@ export default function App({
               <BundlePerformanceMonitor />
             </>
           )}
-        </SessionProvider>
+        </AuthProvider>
       </QueryClientProvider>
     </>
   )
