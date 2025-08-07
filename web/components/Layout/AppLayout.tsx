@@ -1,5 +1,5 @@
 import React from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/contexts/AuthContext'
 import Header from './Header'
 import Sidebar from './Sidebar'
 import Footer from './Footer'
@@ -19,8 +19,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({
   showFooter = true,
   className = ''
 }) => {
-  const { status } = useSession()
-  const isAuthenticated = status === 'authenticated'
+  const { isAuthenticated } = useAuth()
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">

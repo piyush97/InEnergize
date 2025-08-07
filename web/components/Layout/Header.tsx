@@ -1,7 +1,8 @@
 import React, { Fragment } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { useSession, signOut } from 'next-auth/react'
+import { useAuth } from '@/contexts/AuthContext'
+import { useRouter } from 'next/router'
 import { Menu, Transition } from '@headlessui/react'
 import { 
   UserCircleIcon, 
@@ -13,11 +14,12 @@ import {
 import { classNames } from '../../utils/classNames'
 
 const Header: React.FC = () => {
-  const { data: session, status } = useSession()
-  const isAuthenticated = status === 'authenticated'
+  const { user, isAuthenticated, logout } = useAuth()
+  const router = useRouter()
 
   const handleSignOut = () => {
-    signOut({ callbackUrl: '/' })
+    logout()
+    router.push('/')
   }
 
   return (
@@ -79,10 +81,10 @@ const Header: React.FC = () => {
                     <div>
                       <Menu.Button className="max-w-xs bg-white flex items-center text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
                         <span className="sr-only">Open user menu</span>
-                        {session?.user?.image ? (
+                        {user?.profileImage ? (
                           <Image
                             className="h-8 w-8 rounded-full"
-                            src={session.user.image}
+                            src={user.profileImage}
                             alt=""
                             width={32}
                             height={32}
@@ -103,8 +105,8 @@ const Header: React.FC = () => {
                     >
                       <Menu.Items className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5 focus:outline-none">
                         <div className="px-4 py-2 text-sm text-gray-700 border-b border-gray-200">
-                          <div className="font-medium">{session?.user?.name || 'User'}</div>
-                          <div className="text-xs text-gray-500">{session?.user?.email}</div>
+                          <div className="font-medium">{user ? `${user.firstName} ${user.lastName}` : 'User'}</div>
+                          <div className="text-xs text-gray-500">{user?.email}</div>
                         </div>
                         
                         <Menu.Item>
