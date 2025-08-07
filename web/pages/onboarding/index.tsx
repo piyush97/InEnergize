@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/router'
 import AppLayout from '../../components/Layout/AppLayout'
 import LinkedInConnectionStep from '../../components/Onboarding/LinkedInConnectionStep'
@@ -10,18 +10,18 @@ import CompletionStep from '../../components/Onboarding/CompletionStep'
 type OnboardingStep = 'linkedin' | 'profile' | 'preferences' | 'complete'
 
 const OnboardingPage: React.FC = () => {
-  const { data: session, status } = useSession()
+  const { user, isAuthenticated, loading } = useAuth()
   const router = useRouter()
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('linkedin')
   const [completedSteps, setCompletedSteps] = useState<Set<OnboardingStep>>(new Set())
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (!loading && !isAuthenticated) {
       router.push('/auth/signin?callbackUrl=/onboarding')
     }
-  }, [status, router])
+  }, [loading, isAuthenticated, router])
 
-  if (status === 'loading') {
+  if (loading) {
     return (
       <AppLayout showSidebar={false} showFooter={false}>
         <div className="min-h-screen flex items-center justify-center">
